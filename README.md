@@ -1,5 +1,7 @@
 # FrameFrog Pipeline
 
+[![CI](https://github.com/framefrog-ai/framefrog-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/framefrog-ai/framefrog-pipeline/actions/workflows/ci.yml)
+
 > **FrameFrog** — AI cloud video post-production, as a pipeline you can actually run.
 >
 > Audio cleanup → scene detection → 3D LUT grade → frame interpolation → delivery,
@@ -245,6 +247,10 @@ signed-link HMACs, webhook delivery/redaction, cost accounting, a real FFmpeg
 integration run, and API smoke tests. The RIFE integration test runs only when
 both the graph and `onnxruntime` are present; FFmpeg-dependent tests skip
 automatically when the binary is missing.
+
+CI (`.github/workflows/ci.yml`) runs the suite on Ubuntu with FFmpeg on every
+push to `main` and every pull request. Model weights are not fetched in CI, so
+the RIFE test skips there by design while the FFmpeg paths run for real.
 
 ---
 
