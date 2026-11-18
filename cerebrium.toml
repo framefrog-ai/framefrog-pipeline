@@ -1,20 +1,18 @@
-# FrameFrog Pipeline — serverless GPU deployment config (skeleton)
-# NOTE: Cerebrium's schema changes over time. Verify against current docs:
-#   https://docs.cerebrium.ai/
-# Adjust section names/keys to match the installed `cerebrium` CLI version.
+# FrameFrog pipeline — serverless GPU deployment config.
+# Cerebrium's config schema changes between CLI releases; verify against
+# https://docs.cerebrium.ai/ before deploying, then run:
+#   cerebrium deploy
+#
+# Two deployment shapes work:
+#   * HTTP API     entrypoint = "framefrog.api:app"      (FastAPI)
+#   * job worker   entrypoint = "main:post_production"   (function)
 
-[cerebrium]
-sections = ["deployment", "build"]
-
-[deployment]
+[cerebrium.deployment]
 name = "framefrog-pipeline"
-# GPU runtime; scale-to-zero serverless.
-runtime = "cuda"
-# Python entrypoint: module:function
+python_version = "3.11"
 entrypoint = "main:post_production"
-# Expose an HTTP endpoint for POST /post_production
 webhook = true
 
 [build]
-python_version = "3.11"
 requirements = "requirements.txt"
+system_packages = ["ffmpeg"]

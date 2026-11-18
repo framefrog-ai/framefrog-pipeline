@@ -1,10 +1,16 @@
-# FrameFrog pipeline — scaffold dependencies.
-# Placeholder set; pin exact versions as real models are integrated.
+# FrameFrog pipeline — runtime dependencies.
+# FFmpeg/FFprobe are system binaries, not pip packages:
+#   apt-get install ffmpeg     (Debian/Ubuntu)
+#   brew install ffmpeg        (macOS)
 
-numpy
-opencv-python-headless
-ffmpeg-python
-scenedetect[opencv]
-boto3
-requests
-# cerebrium  (install the CLI separately: pip install cerebrium)
+numpy>=1.26
+opencv-python-headless>=4.9
+scenedetect[opencv]>=0.6.4
+boto3>=1.34          # only needed for s3:// inputs and outputs
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+
+# dev
+pytest>=8.0
+httpx>=0.27
