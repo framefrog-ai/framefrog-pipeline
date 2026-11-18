@@ -1,0 +1,10 @@
+# FrameFrog pipeline — scaffold dependencies.
+# Placeholder set; pin exact versions as real models are integrated.
+
+numpy
+opencv-python-headless
+ffmpeg-python
+scenedetect[opencv]
+boto3
+requests
+# cerebrium  (install the CLI separately: pip install cerebrium)
