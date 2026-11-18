@@ -64,6 +64,18 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     )
     ap.add_argument("--rife-onnx", default=None, help="path to a RIFE ONNX graph")
     ap.add_argument("--rife-provider", choices=["auto", "cpu", "cuda"], default="auto")
+    ap.add_argument(
+        "--webhook-url", default=None,
+        help="POST the final manifest to this URL (HMAC with $FRAMEFROG_WEBHOOK_SECRET)",
+    )
+    ap.add_argument(
+        "--gpu-rate", type=float, default=None,
+        help="GPU hourly USD for cost accounting (default: $FRAMEFROG_GPU_HOURLY_USD or 0)",
+    )
+    ap.add_argument(
+        "--cpu-rate", type=float, default=None,
+        help="CPU hourly USD for cost accounting (default: $FRAMEFROG_CPU_HOURLY_USD or 0)",
+    )
     ap.add_argument("--json", action="store_true", help="print the full manifest as JSON")
     return ap.parse_args(argv)
 
@@ -83,6 +95,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     }
     if args.rife_onnx:
         options["rife_onnx"] = args.rife_onnx
+    if args.webhook_url:
+        options["webhook_url"] = args.webhook_url
+    if args.gpu_rate is not None:
+        options["gpu_hourly_usd"] = args.gpu_rate
+    if args.cpu_rate is not None:
+        options["cpu_hourly_usd"] = args.cpu_rate
     manifest = post_production(args.input, stages=stages, options=options, output_dir=args.out)
 
     if args.json:
@@ -112,6 +130,16 @@ def _print_summary(manifest: Dict) -> None:
             print(f"  {key:<8} {art[key]}")
     if manifest.get("error"):
         print(f"  error    {manifest['error']}")
+    cost = manifest.get("cost") or {}
+    if cost.get("stages"):
+        print(
+            f"  compute  {cost.get('gpu_seconds', 0)}s gpu · "
+            f"{cost.get('cpu_seconds', 0)}s cpu · ${cost.get('total_usd', 0):.4f}"
+        )
+    hook = manifest.get("webhook")
+    if hook:
+        state = "delivered" if hook.get("delivered") else "failed"
+        print(f"  webhook  {state} ({hook.get('attempts')} attempt(s)) → {hook.get('url')}")
     print(f"  elapsed  {manifest.get('elapsed_s')} s\n")
 
 

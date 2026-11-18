@@ -27,7 +27,7 @@ import traceback
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional
 
-from framefrog import ffmpeg
+from framefrog import ffmpeg, ops
 from framefrog.stages import STAGES, STAGE_NAMES
 from framefrog.storage import is_remote, resolve_input
 from framefrog.types import JobRequest, StageResult, new_job_id
@@ -39,6 +39,14 @@ VIDEO_PRODUCING = {"audio_cleanup", "color_grade", "interpolate", "deliver"}
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _public_options(options: Dict) -> Dict:
+    """Options as recorded in the manifest — secrets replaced, never stored."""
+    clean = dict(options or {})
+    if clean.get("webhook_secret"):
+        clean["webhook_secret"] = "***"
+    return clean
 
 
 def run_job(req: JobRequest, progress: Optional[ProgressFn] = None, job_id: Optional[str] = None) -> Dict:
@@ -56,7 +64,7 @@ def run_job(req: JobRequest, progress: Optional[ProgressFn] = None, job_id: Opti
         "job_id": job_id,
         "status": "running",
         "started_at": _now(),
-        "request": {"input_uri": req.input_uri, "stages": req.stages, "options": req.options},
+        "request": {"input_uri": req.input_uri, "stages": req.stages, "options": _public_options(req.options)},
         "stages": [],
         "artifacts": {},
         "workdir": workdir,
@@ -136,6 +144,20 @@ def run_job(req: JobRequest, progress: Optional[ProgressFn] = None, job_id: Opti
         manifest["finished_at"] = _now()
         manifest["elapsed_s"] = round(time.time() - started, 3)
 
+    manifest["cost"] = ops.compute_costs(
+        manifest["stages"],
+        gpu_hourly_usd=req.options.get("gpu_hourly_usd"),
+        cpu_hourly_usd=req.options.get("cpu_hourly_usd"),
+    )
+
+    webhook_url = req.options.get("webhook_url")
+    if webhook_url:
+        manifest["webhook"] = ops.notify_manifest(
+            manifest,
+            webhook_url,
+            secret=req.options.get("webhook_secret"),
+        )
+
     manifest_path = os.path.join(job_dir, "manifest.json")
     with open(manifest_path, "w", encoding="utf-8") as fh:
         json.dump(manifest, fh, indent=2, default=str)
@@ -154,4 +176,5 @@ def describe() -> Dict:
         "ffmpeg": ffmpeg.has_ffmpeg(),
         "stages": STAGE_NAMES,
         "models": model_report(),
+        "ops": ops.capabilities(),
     }

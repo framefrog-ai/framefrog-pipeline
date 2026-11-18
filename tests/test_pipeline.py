@@ -125,3 +125,10 @@ def test_rife_interpolation(short_clip, tmp_path):
     assert meta["provider"] == "CPUExecutionProvider"
     assert abs(meta["output_fps"] - 24) < 0.5
     assert os.path.exists(manifest["final_output"])
+
+
+def test_webhook_secret_is_redacted_in_manifest():
+    from framefrog.pipeline import _public_options
+
+    clean = _public_options({"webhook_secret": "s3cret", "lut": "neutral_film"})
+    assert clean == {"webhook_secret": "***", "lut": "neutral_film"}

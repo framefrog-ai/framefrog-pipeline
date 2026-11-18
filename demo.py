@@ -124,6 +124,13 @@ def main() -> int:
     print(f"Scenes: {scenes['scene_count']} detected via {scenes['method']} "
           f"(cuts at {scenes['cuts_s']} s)")
 
+    cost = manifest.get("cost") or {}
+    if cost.get("stages"):
+        print(
+            f"Compute: {cost.get('gpu_seconds', 0)}s gpu · "
+            f"{cost.get('cpu_seconds', 0)}s cpu · ${cost.get('total_usd', 0):.4f}"
+        )
+
     print(f"\nManifest: {manifest['manifest_path']}")
     return 0
 

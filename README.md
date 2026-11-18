@@ -153,8 +153,8 @@ uvicorn framefrog.api:app --port 8080
 | `GET` | `/health` | capabilities + FFmpeg availability |
 | `GET` | `/stages` | stage catalogue |
 | `POST` | `/post_production` | queue a job, returns `202 {job_id}` |
-| `GET` | `/jobs/{id}` | manifest (memory, falls back to disk) |
-| `GET` | `/jobs/{id}/download` | master MP4 |
+| `GET` | `/jobs/{id}` | manifest (memory, falls back to disk); adds `download_url` when signing is on |
+| `GET` | `/jobs/{id}/download` | master MP4; requires `?token=&expires=` when signing is on |
 
 ```bash
 curl -X POST localhost:8080/post_production \
@@ -165,6 +165,47 @@ curl -X POST localhost:8080/post_production \
 
 S3 inputs work when `boto3` (or the AWS CLI) is configured:
 `"input_uri": "s3://bucket/rushes/spot-01.mov"`.
+
+---
+
+## Operations
+
+Three opt-in pieces, all stdlib-only, all recorded in the manifest:
+
+**Signed download links.** Set `FRAMEFROG_SIGNING_SECRET` and the API only serves
+the master with a valid HMAC token. `GET /jobs/{id}` then carries a ready-to-use
+`download_url`; `FRAMEFROG_SIGNING_TTL` controls link lifetime (default 1 hour).
+Without the secret (local dev) downloads stay open — the `/health` probe reports
+which mode is active under `ops.signing`.
+
+**Job webhooks.** Pass `options.webhook_url` (or `--webhook-url`) and the final
+manifest is POSTed when the job finishes — success or failure. With
+`FRAMEFROG_WEBHOOK_SECRET` set, the body is signed:
+
+```
+X-FrameFrog-Signature: sha256=<hex HMAC of the raw body>
+```
+
+Delivery is best-effort with 3 attempts and backoff; the outcome lands in
+`manifest.webhook` (`delivered`, `attempts`, `status`, `error`). The hook URL is
+redacted before recording so tokens never leak into the audit trail.
+
+**Cost accounting.** Every manifest gets `cost`: measured `gpu_seconds` /
+`cpu_seconds`, per-stage class and cost. A stage is billed as GPU only if it
+actually used a GPU backend (DeepFilterNet or RIFE); everything else is CPU.
+Rates default to **0.0** — the manifest reports seconds but never invents a
+price. Set `FRAMEFROG_GPU_HOURLY_USD` / `FRAMEFROG_CPU_HOURLY_USD` (or
+`--gpu-rate` / `--cpu-rate`) to turn seconds into dollars using your provider's
+rate card.
+
+```json
+"cost": {
+  "rates": {"gpu_hourly_usd": 3.0, "cpu_hourly_usd": 0.3},
+  "gpu_seconds": 72.0, "cpu_seconds": 18.0,
+  "stages": [{"stage": "interpolate", "class": "gpu", "seconds": 36.0, "usd": 0.03}],
+  "total_usd": 0.0615
+}
+```
 
 ---
 
@@ -199,10 +240,11 @@ python -m pytest -q
 ```
 
 Coverage: LUT generation and fingerprints (no FFmpeg), scene detection on a
-synthetic hard cut (OpenCV only), model resolution and fallback semantics, a
-real FFmpeg integration run, and API smoke tests. The RIFE integration test runs
-only when both the graph and `onnxruntime` are present; FFmpeg-dependent tests
-skip automatically when the binary is missing.
+synthetic hard cut (OpenCV only), model resolution and fallback semantics,
+signed-link HMACs, webhook delivery/redaction, cost accounting, a real FFmpeg
+integration run, and API smoke tests. The RIFE integration test runs only when
+both the graph and `onnxruntime` are present; FFmpeg-dependent tests skip
+automatically when the binary is missing.
 
 ---
 
@@ -228,8 +270,8 @@ skip automatically when the binary is missing.
 - [x] DeepFilterNet3 behind `audio_cleanup`
 - [x] RIFE v4.9 (ONNX Runtime) behind `interpolate`
 - [ ] Per-shot fan-out via queue
-- [ ] Signed upload/download URLs + job webhooks
-- [ ] Model-aware cost accounting (GPU-seconds per stage)
+- [x] Signed upload/download URLs + job webhooks
+- [x] Model-aware cost accounting (GPU-seconds per stage)
 
 ---
 

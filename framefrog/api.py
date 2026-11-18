@@ -22,11 +22,11 @@ import json
 import os
 from typing import Dict, List, Optional
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from framefrog import __version__
+from framefrog import __version__, ops
 from framefrog.pipeline import describe, run_job
 from framefrog.types import JobRequest
 
@@ -91,8 +91,7 @@ def list_jobs() -> dict:
     return {"jobs": list(JOBS.values())[-20:]}
 
 
-@app.get("/jobs/{job_id}")
-def get_job(job_id: str) -> dict:
+def _load_manifest(job_id: str) -> dict:
     if job_id in JOBS:
         return JOBS[job_id]
     for root, _dirs, files in os.walk(OUTPUT_DIR):
@@ -102,9 +101,29 @@ def get_job(job_id: str) -> dict:
     raise HTTPException(status_code=404, detail="job not found")
 
 
+@app.get("/jobs/{job_id}")
+def get_job(job_id: str, request: Request) -> dict:
+    manifest = dict(_load_manifest(job_id))
+    if ops.signing_enabled() and manifest.get("status") == "completed":
+        link = ops.download_url(str(request.base_url), job_id)
+        if link:
+            manifest["download_url"] = link
+    return manifest
+
+
 @app.get("/jobs/{job_id}/download")
-def download(job_id: str) -> FileResponse:
-    manifest = get_job(job_id)
+def download(job_id: str, token: str = "", expires: int = 0) -> FileResponse:
+    if ops.signing_enabled():
+        ok, reason = ops.verify_download(
+            job_id,
+            "master",
+            expires,
+            token,
+            os.environ.get(ops.ENV_SIGNING_SECRET, ""),
+        )
+        if not ok:
+            raise HTTPException(status_code=403, detail=f"signed link rejected: {reason}")
+    manifest = _load_manifest(job_id)
     master = (manifest.get("artifacts") or {}).get("master")
     if not master or not os.path.exists(master):
         raise HTTPException(status_code=409, detail="job has no master yet")
