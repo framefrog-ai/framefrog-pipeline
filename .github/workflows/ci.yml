@@ -17,10 +17,6 @@ jobs:
     name: pytest (Python 3.11, FFmpeg)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      # Models are not fetched in CI: RIFE tests detect an empty model dir and
-      # skip, while the FFmpeg fallbacks still run for real.
-      FRAMEFROG_MODEL_DIR: ${{ runner.temp }}/framefrog-models
 
     steps:
       - name: Checkout
@@ -55,4 +51,8 @@ jobs:
         run: python -m compileall -q framefrog main.py demo.py scripts
 
       - name: Run tests
+        env:
+          # Models are not fetched in CI: RIFE tests detect an empty model dir
+          # and skip, while the FFmpeg fallbacks still run for real.
+          FRAMEFROG_MODEL_DIR: ${{ runner.temp }}/framefrog-models
         run: python -m pytest -q
