@@ -4,5 +4,7 @@ __pycache__/
 .pytest_cache/
 outputs/
 assets/sample/
+assets/models/*.onnx
+assets/models/*.part
 .DS_Store
 *.egg-info/

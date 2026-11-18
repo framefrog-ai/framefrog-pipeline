@@ -12,6 +12,9 @@ delivery) and verifies the artifacts.
 The point is that a stranger can clone the repo, run one command, and see a
 master file, a proxy, a poster and a manifest appear — with FFmpeg as the only
 system dependency.
+
+Optional: `--interp-model rife --denoise-model deepfilternet` to exercise the
+model-backed stages instead of the FFmpeg fallbacks.
 """
 
 from __future__ import annotations
@@ -57,6 +60,12 @@ def make_sample() -> str:
 def main() -> int:
     ap = argparse.ArgumentParser(description="FrameFrog end-to-end demo")
     ap.add_argument("--quick", action="store_true", help="skip frame interpolation")
+    ap.add_argument(
+        "--denoise-model", choices=["auto", "deepfilternet", "ffmpeg"], default="auto"
+    )
+    ap.add_argument(
+        "--interp-model", choices=["auto", "rife", "ffmpeg"], default="auto"
+    )
     args = ap.parse_args()
 
     sample = make_sample()
@@ -75,6 +84,8 @@ def main() -> int:
                 "look_strength": 1.0,
                 "target_fps": 60,
                 "interp_quality": "fast",
+                "denoise_model": args.denoise_model,
+                "interp_model": args.interp_model,
             },
             output_dir=OUT,
         )

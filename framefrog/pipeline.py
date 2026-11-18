@@ -146,9 +146,12 @@ def run_job(req: JobRequest, progress: Optional[ProgressFn] = None, job_id: Opti
 
 def describe() -> Dict:
     """Machine-readable capability list for /health and the marketing site."""
+    from framefrog.models import model_report
+
     return {
         "name": "framefrog-pipeline",
         "version": __import__("framefrog").__version__,
         "ffmpeg": ffmpeg.has_ffmpeg(),
         "stages": STAGE_NAMES,
+        "models": model_report(),
     }

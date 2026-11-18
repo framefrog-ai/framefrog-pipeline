@@ -20,7 +20,11 @@ cd framefrog-pipeline
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt        # FFmpeg must be on PATH
 
-python demo.py                          # end-to-end, ~30 s on a laptop
+# optional model backends (see "Model backends" below)
+pip install onnxruntime deepfilternet
+python scripts/fetch_models.py         # RIFE v4.9 ONNX, 21 MB
+
+python demo.py                          # end-to-end; uses RIFE if the graph is present
 python main.py --input rushes.mov --lut cinematic_warm --target-fps 60
 ```
 
@@ -48,11 +52,37 @@ FrameFrog job fj_ab12cd34  [completed]
 
 | Stage | What it does | Key options |
 |---|---|---|
-| `audio_cleanup` | high/low-pass, FFT denoise, −16 LUFS loudness; picture stream-copied | `lufs`, `denoise`, `highpass`, `lowpass` |
+| `audio_cleanup` | DeepFilterNet3 neural denoise, then −16 LUFS loudness; FFmpeg spectral denoise fallback. Picture stream-copied | `denoise_model`, `lufs`, `highpass`, `lowpass` |
 | `scene_detect` | shot boundaries via PySceneDetect, OpenCV histogram fallback | `scene_threshold`, `min_scene_s` |
 | `color_grade` | applies a `.cube` look with `lut3d`, optional strength blend | `lut`, `look_strength` |
-| `interpolate` | 60/120 fps `minterpolate`; no-op if already high-fps | `target_fps`, `interp_quality` (`fast`/`high`) |
+| `interpolate` | RIFE v4.9 optical-flow interpolation (ONNX Runtime), 60/120 fps; FFmpeg `minterpolate` fallback | `interp_model`, `target_fps`, `rife_onnx`, `rife_provider`, `interp_quality` |
 | `deliver` | H.264 master, 720p proxy, poster frame, faststart | `master_crf` |
+
+### Model backends
+
+Both models are optional and both degrade gracefully:
+
+| Backend | Install | Used when |
+|---|---|---|
+| DeepFilterNet3 | `pip install deepfilternet` (torch) | `denoise_model=auto` and the package imports |
+| RIFE v4.9 | `python scripts/fetch_models.py` + `onnxruntime` | `interp_model=auto` and a graph is found |
+
+Resolution order for the RIFE graph: `options["rife_onnx"]` →
+`$FRAMEFROG_RIFE_ONNX` → `$FRAMEFROG_MODEL_DIR` → `assets/models/rife*.onnx`.
+ONNX Runtime picks CUDA when available, CPU otherwise (`rife_provider` can
+force either).
+
+Fallback semantics are explicit and recorded in the manifest:
+
+- `auto` (default) — try the model, fall back to FFmpeg, record
+  `fallback_reason`.
+- `rife` / `deepfilternet` — a hard requirement; the stage fails with install
+  instructions if the runtime is missing.
+- No hidden downloads. A job never pulls model weights mid-flight; fetching is
+  a separate, reproducible step.
+
+Model weights are not committed — `scripts/fetch_models.py` prints the SHA-256
+of the graph it writes, and the manifest records which graph and provider ran.
 
 All stages share one signature:
 
@@ -102,7 +132,10 @@ discarded.
   "status": "completed",
   "input": { "width": 640, "height": 360, "fps": 30.0, "duration_s": 6.0 },
   "stages": [ { "stage": "color_grade", "status": "completed", "duration_s": 0.35,
-                "meta": { "lut": "cinematic_warm.cube", "strength": 1.0, "sha256": "…" } } ],
+                "meta": { "lut": "cinematic_warm.cube", "strength": 1.0, "sha256": "…" } },
+              { "stage": "interpolate", "status": "completed",
+                "meta": { "interp_model": "RIFE v4.9 (ONNX Runtime)",
+                          "provider": "CPUExecutionProvider", "output_fps": 60.0 } } ],
   "artifacts": { "master": "…/05_master.mp4", "proxy": "…", "poster": "…", "scenes": "…" }
 }
 ```
@@ -146,6 +179,13 @@ cerebrium deploy          # reads cerebrium.toml
 function worker (`main:post_production`). The `Dockerfile` is the same image used
 locally; FFmpeg is the only system package.
 
+The image bundles the RIFE backend by default (`onnxruntime` + the 21 MB graph at
+build time). Build lean and use the FFmpeg interpolation fallback with:
+
+```bash
+docker build --build-arg WITH_RIFE=0 -t framefrog .
+```
+
 In production, the in-process `BackgroundTasks` is replaced by a queue consumer
 (SQS / Cerebrium async), so workers scale independently of the API and each
 stage can fan out per shot.
@@ -159,8 +199,10 @@ python -m pytest -q
 ```
 
 Coverage: LUT generation and fingerprints (no FFmpeg), scene detection on a
-synthetic hard cut (OpenCV only), a real FFmpeg integration run, and API smoke
-tests. FFmpeg-dependent tests skip automatically when the binary is missing.
+synthetic hard cut (OpenCV only), model resolution and fallback semantics, a
+real FFmpeg integration run, and API smoke tests. The RIFE integration test runs
+only when both the graph and `onnxruntime` are present; FFmpeg-dependent tests
+skip automatically when the binary is missing.
 
 ---
 
@@ -172,21 +214,22 @@ tests. FFmpeg-dependent tests skip automatically when the binary is missing.
 - **FFmpeg is the substrate, not a hidden detail.** Filter graphs live in the
   stage files where a colourist or engineer can read them.
 - **Honest "AI".** Look selection, denoise model choice and interpolation quality
-  are inputs to a deterministic execution layer. When a learned model is wired
-  in (DeepFilterNet for audio, RIFE for interpolation), it replaces a stage
-  function — the manifest, artifacts and API stay identical.
-- **Reproducibility.** LUT hashes, stage timings and source probes are recorded
-  per job.
+  are inputs to a deterministic execution layer. DeepFilterNet and RIFE plug into
+  the same stage contract as the FFmpeg fallbacks; the manifest, artifacts and
+  API are identical either way, and every fallback is recorded.
+- **Reproducibility.** LUT hashes, model graph names, ONNX providers and stage
+  timings are recorded per job.
 
 ## Roadmap
 
 - [x] Real, runnable stages with FFmpeg
 - [x] Deterministic LUT library + fingerprints
 - [x] Manifest, API, tests, Docker
-- [ ] DeepFilterNet / Demucs dereverb behind `audio_cleanup`
-- [ ] RIFE / FILM behind `interpolate` on GPU
+- [x] DeepFilterNet3 behind `audio_cleanup`
+- [x] RIFE v4.9 (ONNX Runtime) behind `interpolate`
 - [ ] Per-shot fan-out via queue
 - [ ] Signed upload/download URLs + job webhooks
+- [ ] Model-aware cost accounting (GPU-seconds per stage)
 
 ---
 

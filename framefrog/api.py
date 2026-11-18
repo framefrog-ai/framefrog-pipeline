@@ -26,13 +26,14 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from framefrog import __version__
 from framefrog.pipeline import describe, run_job
 from framefrog.types import JobRequest
 
 OUTPUT_DIR = os.environ.get("FRAMEFROG_OUTPUT_DIR", os.path.join(os.getcwd(), "outputs"))
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-app = FastAPI(title="FrameFrog Pipeline", version="0.3.0")
+app = FastAPI(title="FrameFrog Pipeline", version=__version__)
 JOBS: Dict[str, dict] = {}
 
 
@@ -62,10 +63,10 @@ def health() -> dict:
 def stages() -> dict:
     return {
         "stages": [
-            {"name": "audio_cleanup", "summary": "denoise, de-hum, -16 LUFS loudness"},
+            {"name": "audio_cleanup", "summary": "DeepFilterNet3 denoise (FFmpeg fallback), -16 LUFS"},
             {"name": "scene_detect", "summary": "shot boundaries (PySceneDetect or OpenCV)"},
             {"name": "color_grade", "summary": "3D LUT look, blendable strength"},
-            {"name": "interpolate", "summary": "60/120 fps motion interpolation"},
+            {"name": "interpolate", "summary": "RIFE v4.9 (ONNX) or minterpolate, 60/120 fps"},
             {"name": "deliver", "summary": "master, 720p proxy, poster frame"},
         ]
     }

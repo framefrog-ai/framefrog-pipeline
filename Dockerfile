@@ -10,6 +10,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Optional RIFE backend: ONNX Runtime + the 21 MB graph. Build with
+#   --build-arg WITH_RIFE=0   to keep the image lean and use FFmpeg fallback.
+ARG WITH_RIFE=1
+RUN if [ "$WITH_RIFE" = "1" ]; then \
+      pip install --no-cache-dir onnxruntime && \
+      python scripts/fetch_models.py ; \
+    fi
+
 ENV FRAMEFROG_OUTPUT_DIR=/tmp/framefrog
 EXPOSE 8080
 

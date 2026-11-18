@@ -54,6 +54,16 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     ap.add_argument("--target-fps", type=int, default=60)
     ap.add_argument("--interp-quality", choices=["fast", "high"], default="fast")
     ap.add_argument("--lufs", type=float, default=-16.0)
+    ap.add_argument(
+        "--denoise-model", choices=["auto", "deepfilternet", "ffmpeg"], default="auto",
+        help="audio denoise backend (default: auto — DeepFilterNet if installed)",
+    )
+    ap.add_argument(
+        "--interp-model", choices=["auto", "rife", "ffmpeg"], default="auto",
+        help="frame interpolation backend (default: auto — RIFE if the graph is present)",
+    )
+    ap.add_argument("--rife-onnx", default=None, help="path to a RIFE ONNX graph")
+    ap.add_argument("--rife-provider", choices=["auto", "cpu", "cuda"], default="auto")
     ap.add_argument("--json", action="store_true", help="print the full manifest as JSON")
     return ap.parse_args(argv)
 
@@ -67,7 +77,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         "target_fps": args.target_fps,
         "interp_quality": args.interp_quality,
         "lufs": args.lufs,
+        "denoise_model": args.denoise_model,
+        "interp_model": args.interp_model,
+        "rife_provider": args.rife_provider,
     }
+    if args.rife_onnx:
+        options["rife_onnx"] = args.rife_onnx
     manifest = post_production(args.input, stages=stages, options=options, output_dir=args.out)
 
     if args.json:

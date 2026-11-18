@@ -1,0 +1,11 @@
+# Optional model runtimes — the pipeline runs without them (FFmpeg fallbacks).
+#
+#   pip install -r requirements-models.txt
+#
+# torch is pulled by deepfilternet; on CPU boxes prefer the CPU wheels:
+#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+#
+# RIFE weights are not a pip package: python scripts/fetch_models.py
+
+onnxruntime>=1.17        # RIFE v4.9 ONNX
+deepfilternet>=0.5.6     # DeepFilterNet3 (pulls torch/torchaudio)
