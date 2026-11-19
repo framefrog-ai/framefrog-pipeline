@@ -108,7 +108,8 @@ def run_task(task: Dict[str, Any]) -> Dict[str, Any]:
     os.makedirs(task["workdir"], exist_ok=True)
     started = time.time()
     try:
-        result = STAGES[task["stage"]].run(task["input"], task["workdir"], task["options"])
+        stage_fn = STAGES[task["stage"]]
+        result = stage_fn(task["input"], task["workdir"], task["options"])
         return {
             "task_id": task["task_id"],
             "shot_index": task["shot_index"],
