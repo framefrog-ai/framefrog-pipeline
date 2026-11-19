@@ -69,3 +69,9 @@ jobs:
             tail -n 80 pytest.log
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          python3 - <<'PY'
+          import pathlib
+          lines = [l.strip() for l in pathlib.Path("pytest.log").read_text(errors="replace").splitlines() if l.strip()]
+          tail = " | ".join(lines[-30:])
+          print(f"::error::{tail[:3500]}")
+          PY
