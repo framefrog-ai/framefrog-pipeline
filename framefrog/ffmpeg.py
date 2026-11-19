@@ -8,7 +8,9 @@ want it visible in the stage files, not hidden behind an abstraction.
 
 from __future__ import annotations
 
+import glob
 import json
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass, field
@@ -81,6 +83,22 @@ def has_encoder(name: str) -> bool:
     return name in available_encoders()
 
 
+def has_nvidia_device() -> bool:
+    """Whether a usable NVIDIA device is actually present.
+
+    FFmpeg builds on CI advertise NVENC without a driver, and using it fails at
+    runtime with ``Cannot load libcuda.so.1``. Auto selection therefore checks
+    for device nodes too. Container users whose nodes live elsewhere can force
+    it with ``FRAMEFROG_FORCE_NVENC=1`` or disable with
+    ``FRAMEFROG_DISABLE_NVENC=1``.
+    """
+    if os.environ.get("FRAMEFROG_DISABLE_NVENC", "").lower() in {"1", "true", "yes"}:
+        return False
+    if os.environ.get("FRAMEFROG_FORCE_NVENC", "").lower() in {"1", "true", "yes"}:
+        return True
+    return bool(glob.glob("/dev/nvidia[0-9]*"))
+
+
 def choose_encoder(options: Optional[Dict] = None) -> str:
     """Resolve ``options["encoder"]`` to a concrete FFmpeg encoder."""
     alias = _ALIASES.get(str((options or {}).get("encoder", "auto")).lower())
@@ -90,12 +108,20 @@ def choose_encoder(options: Optional[Dict] = None) -> str:
             "use auto|libx264|libx265|nvenc|h264_nvenc|hevc_nvenc"
         )
     if alias == "auto":
-        return "h264_nvenc" if has_encoder("h264_nvenc") else "libx264"
-    if alias.endswith("_nvenc") and not has_encoder(alias):
-        raise RuntimeError(
-            f"encoder {alias} requested but FFmpeg reports no NVENC support; "
-            "use encoder=auto or encoder=libx264, or install an NVENC-enabled FFmpeg"
-        )
+        usable = has_encoder("h264_nvenc") and has_nvidia_device()
+        return "h264_nvenc" if usable else "libx264"
+    if alias.endswith("_nvenc"):
+        if not has_encoder(alias):
+            raise RuntimeError(
+                f"encoder {alias} requested but FFmpeg reports no NVENC support; "
+                "use encoder=auto or encoder=libx264, or install an NVENC-enabled FFmpeg"
+            )
+        if not has_nvidia_device():
+            raise RuntimeError(
+                f"encoder {alias} exists in FFmpeg but no NVIDIA device/libcuda is "
+                "available; use encoder=auto or set FRAMEFROG_FORCE_NVENC=1 only if "
+                "the device is visible to this process"
+            )
     if alias in {"libx264", "libx265"} and not has_encoder(alias):
         raise RuntimeError(f"encoder {alias} not available in this FFmpeg build")
     return alias

@@ -141,9 +141,11 @@ python main.py --input rushes/spot.mov \
 
 **Encoder selection.** Every encoding stage accepts
 `encoder = auto | libx264 | libx265 | nvenc | h264_nvenc | hevc_nvenc`.
-`auto` asks `ffmpeg -encoders` and picks `h264_nvenc` when the build has NVENC,
-otherwise `libx264`; the same job definition therefore runs on a CPU laptop and
-a GPU box. An explicit NVENC request on a build without it fails with a clear
+`auto` requires both an NVENC-capable FFmpeg and a visible NVIDIA device
+(`/dev/nvidia*`), then picks `h264_nvenc`; otherwise `libx264`. That matters on
+CI images whose FFmpeg advertises NVENC without a driver. Override with
+`FRAMEFROG_FORCE_NVENC=1` / `FRAMEFROG_DISABLE_NVENC=1`. The same job definition
+therefore runs on a CPU laptop and a GPU box. An explicit NVENC request on a build without it fails with a clear
 message. The chosen encoder is recorded in each stage's manifest metadata
 (`encoder`, or `encoders.master/proxy` in delivery).
 

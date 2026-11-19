@@ -16,7 +16,8 @@ def test_libx264_args():
 
 def test_auto_never_picks_a_missing_gpu_encoder():
     name = ffmpeg.choose_encoder({"encoder": "auto"})
-    if ffmpeg.has_encoder("h264_nvenc"):
+    usable = ffmpeg.has_encoder("h264_nvenc") and ffmpeg.has_nvidia_device()
+    if usable:
         assert name == "h264_nvenc"
     else:
         assert name == "libx264"
@@ -28,14 +29,15 @@ def test_unknown_encoder_is_rejected():
 
 
 def test_missing_nvenc_fails_with_instructions():
-    if ffmpeg.has_encoder("h264_nvenc"):
-        pytest.skip("this FFmpeg build has NVENC")
+    if ffmpeg.has_encoder("h264_nvenc") and ffmpeg.has_nvidia_device():
+        pytest.skip("this host has a usable NVENC encoder")
     with pytest.raises(RuntimeError, match="NVENC"):
         ffmpeg.choose_encoder({"encoder": "nvenc"})
 
 
 def test_hevc_nvenc_request_is_validated():
-    if not ffmpeg.has_encoder("hevc_nvenc"):
+    usable = ffmpeg.has_encoder("hevc_nvenc") and ffmpeg.has_nvidia_device()
+    if not usable:
         with pytest.raises(RuntimeError):
             ffmpeg.choose_encoder({"encoder": "hevc_nvenc"})
     else:

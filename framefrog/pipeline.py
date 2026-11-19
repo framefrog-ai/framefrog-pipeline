@@ -202,7 +202,8 @@ def describe() -> Dict:
         "fanout": fanout.fanout_capabilities(),
         "encoders": {
             "preferred": ffmpeg.choose_encoder({}),
-            "nvenc": ffmpeg.has_encoder("h264_nvenc"),
-            "hevc_nvenc": ffmpeg.has_encoder("hevc_nvenc"),
+            "nvenc": ffmpeg.has_encoder("h264_nvenc") and ffmpeg.has_nvidia_device(),
+            "compiled_nvenc": ffmpeg.has_encoder("h264_nvenc"),
+            "nvidia_device": ffmpeg.has_nvidia_device(),
         },
     }
