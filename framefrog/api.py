@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field
 
 from framefrog import __version__, ops
 from framefrog.pipeline import describe, run_job
-from framefrog.types import JobRequest
+from framefrog.types import DEFAULT_STAGES, JobRequest
 
 OUTPUT_DIR = os.environ.get("FRAMEFROG_OUTPUT_DIR", os.path.join(os.getcwd(), "outputs"))
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -65,8 +65,10 @@ def stages() -> dict:
         "stages": [
             {"name": "audio_cleanup", "summary": "DeepFilterNet3 denoise (FFmpeg fallback), -16 LUFS"},
             {"name": "scene_detect", "summary": "shot boundaries (PySceneDetect or OpenCV)"},
+            {"name": "rotoscope", "summary": "SAM 2 matte, auto or prompted"},
             {"name": "color_grade", "summary": "3D LUT look, blendable strength"},
             {"name": "interpolate", "summary": "RIFE v4.9 (ONNX) or minterpolate, 60/120 fps"},
+            {"name": "upscale", "summary": "4K via TensorRT, Real-ESRGAN or Lanczos; NVENC encode"},
             {"name": "deliver", "summary": "master, 720p proxy, poster frame"},
         ]
     }
@@ -77,7 +79,7 @@ def post_production(body: PostProductionRequest, background: BackgroundTasks) ->
     job_id = f"fj_{os.urandom(4).hex()}"
     req = JobRequest(
         input_uri=body.input_uri,
-        stages=body.stages or list(describe()["stages"]),
+        stages=body.stages or list(DEFAULT_STAGES),
         options=body.options,
         output_dir=OUTPUT_DIR,
     )

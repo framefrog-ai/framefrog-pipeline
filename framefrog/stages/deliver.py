@@ -19,21 +19,23 @@ def run(input_path: str, workdir: str, options: dict) -> StageResult:
     master = os.path.join(workdir, "05_master.mp4")
     proxy = os.path.join(workdir, "05_proxy_720p.mp4")
     poster = os.path.join(workdir, "05_poster.jpg")
-    crf = str(options.get("master_crf", 18))
+    crf = int(options.get("master_crf", 18))
 
     audio_args = ["-c:a", "aac", "-b:a", "192k"] if info.has_audio else ["-an"]
+    master_enc, master_encoder = ffmpeg.video_encode_args(options, crf=crf, preset="medium")
     ffmpeg.run([
         ffmpeg.ffmpeg_bin(), "-y", "-i", input_path,
-        "-c:v", "libx264", "-crf", crf, "-preset", "medium", "-pix_fmt", "yuv420p",
+        *master_enc,
         *audio_args,
         "-movflags", "+faststart",
         master,
     ])
 
+    proxy_enc, proxy_encoder = ffmpeg.video_encode_args(options, crf=26, preset="veryfast")
     ffmpeg.run([
         ffmpeg.ffmpeg_bin(), "-y", "-i", input_path,
         "-vf", "scale=-2:720",
-        "-c:v", "libx264", "-crf", "26", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+        *proxy_enc,
         *audio_args,
         "-movflags", "+faststart",
         proxy,
@@ -56,5 +58,6 @@ def run(input_path: str, workdir: str, options: dict) -> StageResult:
             "duration_s": round(out_info.duration_s, 3),
             "size_bytes": out_info.size_bytes,
             "faststart": True,
+            "encoders": {"master": master_encoder, "proxy": proxy_encoder},
         },
     )

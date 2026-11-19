@@ -56,9 +56,11 @@ FrameFrog job fj_ab12cd34  [completed]
 |---|---|---|
 | `audio_cleanup` | DeepFilterNet3 neural denoise, then −16 LUFS loudness; FFmpeg spectral denoise fallback. Picture stream-copied | `denoise_model`, `lufs`, `highpass`, `lowpass` |
 | `scene_detect` | shot boundaries via PySceneDetect, OpenCV histogram fallback | `scene_threshold`, `min_scene_s` |
+| `rotoscope` | SAM 2 object matte, automatic or prompted; picture unchanged | `sam2_checkpoint`, `rotoscope_mode`, `rotoscope_prompt` |
 | `color_grade` | applies a `.cube` look with `lut3d`, optional strength blend | `lut`, `look_strength` |
 | `interpolate` | RIFE v4.9 optical-flow interpolation (ONNX Runtime), 60/120 fps; FFmpeg `minterpolate` fallback | `interp_model`, `target_fps`, `rife_onnx`, `rife_provider`, `interp_quality` |
-| `deliver` | H.264 master, 720p proxy, poster frame, faststart | `master_crf` |
+| `upscale` | 4K via TensorRT / Real-ESRGAN / Lanczos; NVENC when available | `target_height`, `upscale_backend`, `upscale_engine`, `upscale_model` |
+| `deliver` | H.264/HEVC master, 720p proxy, poster frame, faststart | `master_crf`, `encoder` |
 
 ### Model backends
 
@@ -124,6 +126,85 @@ python -m framefrog.worker --queue-url file:///jobs/fj_x/fanout_color_grade/queu
 With `"queue_external": true` the orchestrator only publishes and waits for the
 result files, so both sides need shared storage. `sqs://` uses the same
 payloads and ack/nack semantics through boto3.
+
+### GPU pipeline: rotoscoping, 4K, NVENC
+
+`rotoscope` and `upscale` are opt-in stages (they are not in the default job), and
+every GPU path degrades or fails with instructions rather than pretending:
+
+```bash
+python main.py --input rushes/spot.mov \
+  --stages scene_detect,rotoscope,color_grade,interpolate,upscale,deliver \
+  --sam2-checkpoint assets/models/sam2.1_hiera_small.pt \
+  --target-height 2160 --encoder auto
+```
+
+**Encoder selection.** Every encoding stage accepts
+`encoder = auto | libx264 | libx265 | nvenc | h264_nvenc | hevc_nvenc`.
+`auto` asks `ffmpeg -encoders` and picks `h264_nvenc` when the build has NVENC,
+otherwise `libx264`; the same job definition therefore runs on a CPU laptop and
+a GPU box. An explicit NVENC request on a build without it fails with a clear
+message. The chosen encoder is recorded in each stage's manifest metadata
+(`encoder`, or `encoders.master/proxy` in delivery).
+
+**4K upscaling** (`upscale`)
+
+| Backend | Needs | Notes |
+|---|---|---|
+| `tensorrt` | `tensorrt` + `pycuda` + a `.engine` | fastest; contract below |
+| `realesrgan` | `realesrgan` + `basicsr` + `torch` + `.pth` | x4 network, then resample to target |
+| `ffmpeg` | nothing | Lanczos resample; not learned |
+
+`auto` prefers TensorRT when an engine is configured and importable, then
+Real-ESRGAN, then Lanczos. The stage is a no-op (reported `skipped`) when the
+source is already at `target_height` (default 2160); otherwise it writes a
+video at the target height with the original audio muxed once.
+
+TensorRT engines must expose one input and one output with this contract:
+
+- input: `float32`, RGB, NCHW, values in `[0, 1]`
+- output: RGB, NCHW, `float32` in `[0, 1]` or `uint8`
+- dynamic spatial axes are set to `(1, 3, H, W)` per frame; dynamic batch or
+  channel axes are rejected
+
+```bash
+# build once on the target GPU
+trtexec --onnx=RealESRGAN_x4plus.onnx --saveEngine=upscale.engine --fp16 \
+        --shapes=input:1x3x1080x1920
+python main.py --input in.mp4 --stages upscale,deliver \
+  --upscale-backend tensorrt --upscale-engine upscale.engine
+```
+
+Weights are not committed: `python scripts/fetch_models.py --realesrgan` fetches
+the Real-ESRGAN x4 checkpoint (~64 MB); TensorRT engines are built on the GPU
+host.
+
+**Rotoscoping** (`rotoscope`)
+
+SAM 2 tracks an object and writes a matte; the picture itself is passed through
+untouched. Install the runtime and a checkpoint:
+
+```bash
+pip install -r requirements-gpu.txt
+pip install git+https://github.com/facebookresearch/sam2.git
+python scripts/fetch_models.py --sam2 small   # ~150 MB, large ~900 MB
+```
+
+- `auto` (default): SAM 2's automatic mask generator runs on the first frame,
+  the largest object is used as the seed, and the video predictor propagates it.
+- `prompted`: pass `rotoscope_prompt`, e.g.
+  `{"frame": 0, "points": [[960, 540]], "labels": [1]}` or
+  `{"frame": 0, "box": [x0, y0, x1, y1]}`.
+
+Artifacts: `07_matte.mp4` (grayscale), `07_sam2_masks/*.png` (per-frame masks),
+`07_masks.json` (mode, seed, device, frame count, coverage min/mean/max). The
+matte path is also promoted to `manifest.artifacts.matte`. A missing SAM 2
+runtime, checkpoint or config fails the stage loudly — a rotoscope request is
+never silently skipped.
+
+> GPU code paths require NVIDIA hardware and were exercised only through their
+> guard rails and CPU fallbacks in CI; the TensorRT engine contract and SAM 2
+> integration need validation on a GPU host before production use.
 
 All stages share one signature:
 
@@ -284,7 +365,8 @@ Coverage: LUT generation and fingerprints (no FFmpeg), scene detection on a
 synthetic hard cut (OpenCV only), model resolution and fallback semantics,
 signed-link HMACs, webhook delivery/redaction, cost accounting, file-queue
 claim/ack/nack semantics, per-shot split/queue/stitch on a real FFmpeg clip,
-and API smoke tests. The RIFE integration test runs only when
+encoder selection, the 4K Lanczos path and GPU-backend guards, and API smoke
+tests. The RIFE integration test runs only when
 both the graph and `onnxruntime` are present; FFmpeg-dependent tests skip
 automatically when the binary is missing.
 
@@ -318,6 +400,9 @@ the RIFE test skips there by design while the FFmpeg paths run for real.
 - [x] Per-shot fan-out via queue
 - [x] Signed upload/download URLs + job webhooks
 - [x] Model-aware cost accounting (GPU-seconds per stage)
+- [x] SAM 2 rotoscoping (auto + prompted seeds)
+- [x] 4K upscaling (TensorRT / Real-ESRGAN / Lanczos)
+- [x] NVENC video encoding with automatic fallback
 
 ---
 

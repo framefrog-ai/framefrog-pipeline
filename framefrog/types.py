@@ -14,9 +14,18 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 #: Stages that transform the video stream, in the order they should run.
-VIDEO_STAGES = ("audio_cleanup", "color_grade", "interpolate", "deliver")
+VIDEO_STAGES = ("audio_cleanup", "color_grade", "interpolate", "upscale", "deliver")
 #: Stages that only produce metadata.
-META_STAGES = ("scene_detect",)
+META_STAGES = ("scene_detect", "rotoscope")
+#: The stages a job runs when the caller does not ask for anything specific.
+#: Opt-in GPU stages (rotoscope, upscale) are deliberately not here.
+DEFAULT_STAGES = (
+    "audio_cleanup",
+    "scene_detect",
+    "color_grade",
+    "interpolate",
+    "deliver",
+)
 
 
 def new_job_id() -> str:
@@ -37,15 +46,7 @@ class JobRequest:
     """
 
     input_uri: str
-    stages: List[str] = field(
-        default_factory=lambda: [
-            "audio_cleanup",
-            "scene_detect",
-            "color_grade",
-            "interpolate",
-            "deliver",
-        ]
-    )
+    stages: List[str] = field(default_factory=lambda: list(DEFAULT_STAGES))
     options: Dict[str, Any] = field(default_factory=dict)
     output_dir: Optional[str] = None
 

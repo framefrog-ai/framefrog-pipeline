@@ -36,7 +36,7 @@ def test_no_model_available(monkeypatch, tmp_path):
 
 def test_report_shape():
     report = model_report()
-    assert set(report) == {"deepfilternet", "rife"}
+    assert set(report) == {"deepfilternet", "rife", "sam2", "upscale"}
     assert "available" in report["deepfilternet"]
     assert "onnxruntime" in report["rife"]
 

@@ -21,7 +21,7 @@ def test_stages():
     client = TestClient(app)
     r = client.get("/stages")
     assert r.status_code == 200
-    assert len(r.json()["stages"]) == 5
+    assert len(r.json()["stages"]) == 7
 
 
 def test_post_requires_input():

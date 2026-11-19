@@ -95,7 +95,7 @@ def run(input_path: str, workdir: str, options: dict) -> StageResult:
             else "onnxruntime not installed"
         )
 
-    meta = _ffmpeg_interpolate(input_path, out, target, quality)
+    meta = _ffmpeg_interpolate(input_path, out, target, quality, options)
     meta["fallback_reason"] = fallback_reason
     return StageResult("interpolate", out, meta)
 
@@ -199,13 +199,14 @@ def _rife_interpolate(
 
     in_info = ffmpeg.probe(input_path)
     audio_args = ["-c:a", "aac", "-b:a", "192k"] if in_info.has_audio else ["-an"]
+    enc_args, encoder = ffmpeg.video_encode_args(options, crf=18, preset="veryfast")
     ffmpeg.run([
         ffmpeg.ffmpeg_bin(), "-y",
         "-framerate", str(target), "-start_number", "0",
         "-i", os.path.join(frames_dir, "%06d.png"),
         "-i", input_path,
         "-map", "0:v:0", "-map", "1:a:0?",
-        "-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+        *enc_args,
         *audio_args,
         "-shortest", "-movflags", "+faststart",
         out,
@@ -219,6 +220,7 @@ def _rife_interpolate(
         "interp_model": "RIFE v4.9 (ONNX Runtime)",
         "model": os.path.basename(model_path),
         "provider": session.get_providers()[0],
+        "encoder": encoder,
         "target_fps": target,
         "source_fps": round(src_fps, 3),
         "frames_in": n_src,
@@ -245,7 +247,9 @@ def _infer(session, frame_a, frame_b, t: float):
 # --------------------------------------------------------------------------- #
 # FFmpeg backend
 # --------------------------------------------------------------------------- #
-def _ffmpeg_interpolate(input_path: str, out: str, target: int, quality: str) -> dict:
+def _ffmpeg_interpolate(
+    input_path: str, out: str, target: int, quality: str, options: dict
+) -> dict:
     if quality == "high":
         vf = (
             f"minterpolate=fps={target}:mi_mode=mci:mc_mode=aobmc:"
@@ -254,10 +258,11 @@ def _ffmpeg_interpolate(input_path: str, out: str, target: int, quality: str) ->
     else:
         vf = f"minterpolate=fps={target}:mi_mode=blend"
 
+    enc_args, encoder = ffmpeg.video_encode_args(options, crf=18, preset="veryfast")
     ffmpeg.run([
         ffmpeg.ffmpeg_bin(), "-y", "-i", input_path,
         "-vf", vf,
-        "-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+        *enc_args,
         "-c:a", "copy",
         "-movflags", "+faststart",
         out,
@@ -265,6 +270,7 @@ def _ffmpeg_interpolate(input_path: str, out: str, target: int, quality: str) ->
     info = ffmpeg.probe(input_path)
     return {
         "interp_model": "ffmpeg minterpolate",
+        "encoder": encoder,
         "quality": quality,
         "target_fps": target,
         "source_fps": round(info.fps, 3),

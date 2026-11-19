@@ -43,11 +43,12 @@ def run(input_path: str, workdir: str, options: dict) -> StageResult:
 
     lut_arg = lut_path.replace("\\", "/").replace(":", "\\:")
     base = ffmpeg.ffmpeg_bin()
+    enc_args, encoder = ffmpeg.video_encode_args(options, crf=18, preset="veryfast")
     if strength >= 0.999:
         cmd = [
             base, "-y", "-i", input_path,
             "-vf", f"lut3d=file='{lut_arg}':interp=trilinear",
-            "-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+            *enc_args,
             "-c:a", "copy",
             "-movflags", "+faststart",
             out,
@@ -62,7 +63,7 @@ def run(input_path: str, workdir: str, options: dict) -> StageResult:
             base, "-y", "-i", input_path,
             "-filter_complex", graph,
             "-map", "[v]", "-map", "0:a?",
-            "-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+            *enc_args,
             "-c:a", "copy",
             "-movflags", "+faststart",
             out,
@@ -77,5 +78,6 @@ def run(input_path: str, workdir: str, options: dict) -> StageResult:
             "applied": True,
             "strength": round(strength, 3),
             "lut_fingerprint": lut_fingerprint(lut_path),
+            "encoder": encoder,
         },
     )

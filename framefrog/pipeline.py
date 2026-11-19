@@ -30,11 +30,11 @@ from typing import Callable, Dict, List, Optional
 from framefrog import fanout, ffmpeg, ops
 from framefrog.stages import STAGES, STAGE_NAMES
 from framefrog.storage import is_remote, resolve_input
-from framefrog.types import JobRequest, StageResult, new_job_id
+from framefrog.types import DEFAULT_STAGES, JobRequest, StageResult, new_job_id
 
 ProgressFn = Callable[[str, Dict], None]
 
-VIDEO_PRODUCING = {"audio_cleanup", "color_grade", "interpolate", "deliver"}
+VIDEO_PRODUCING = {"audio_cleanup", "color_grade", "interpolate", "upscale", "deliver"}
 
 
 def _now() -> str:
@@ -146,6 +146,8 @@ def run_job(req: JobRequest, progress: Optional[ProgressFn] = None, job_id: Opti
             if name == "scene_detect":
                 manifest["artifacts"]["scenes"] = result.meta.get("scenes_path")
                 scenes = result.meta.get("scenes") or []
+            if name == "rotoscope":
+                manifest["artifacts"]["matte"] = result.meta.get("matte")
             if name == "deliver":
                 manifest["artifacts"].update({
                     "master": result.meta.get("master"),
@@ -194,7 +196,13 @@ def describe() -> Dict:
         "version": __import__("framefrog").__version__,
         "ffmpeg": ffmpeg.has_ffmpeg(),
         "stages": STAGE_NAMES,
+        "default_stages": list(DEFAULT_STAGES),
         "models": model_report(),
         "ops": ops.capabilities(),
         "fanout": fanout.fanout_capabilities(),
+        "encoders": {
+            "preferred": ffmpeg.choose_encoder({}),
+            "nvenc": ffmpeg.has_encoder("h264_nvenc"),
+            "hevc_nvenc": ffmpeg.has_encoder("hevc_nvenc"),
+        },
     }

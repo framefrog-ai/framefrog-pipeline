@@ -7,13 +7,23 @@ here. The orchestrator knows nothing else about it.
 
 from __future__ import annotations
 
-from framefrog.stages import audio, deliver, grade, interpolate, scenes
+from framefrog.stages import (
+    audio,
+    deliver,
+    grade,
+    interpolate,
+    rotoscope,
+    scenes,
+    upscale,
+)
 
 STAGES = {
     "audio_cleanup": audio.run,
     "scene_detect": scenes.run,
+    "rotoscope": rotoscope.run,
     "color_grade": grade.run,
     "interpolate": interpolate.run,
+    "upscale": upscale.run,
     "deliver": deliver.run,
 }
 

@@ -33,7 +33,7 @@ from typing import Any, Callable, Dict, List, Optional
 from framefrog import ffmpeg, queue as queue_mod
 from framefrog.types import StageResult
 
-FANOUT_STAGES = ("color_grade", "interpolate")
+FANOUT_STAGES = ("color_grade", "interpolate", "upscale")
 _ORCH_KEYS = {
     "fanout", "fanout_stages", "fanout_mode", "fanout_workers", "fanout_timeout_s",
     "fanout_backend", "queue_url", "queue_external", "fanout_keep_shots",
@@ -61,9 +61,15 @@ def shots_from_scenes(scenes: List[Dict[str, Any]], duration: float) -> List[Dic
     return shots
 
 
-def split_shots(input_path: str, shots: List[Dict[str, Any]], out_dir: str) -> List[Dict[str, Any]]:
+def split_shots(
+    input_path: str,
+    shots: List[Dict[str, Any]],
+    out_dir: str,
+    options: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
     """Re-encode each shot (video only) into ``out_dir``; audio stays upstream."""
     os.makedirs(out_dir, exist_ok=True)
+    enc_args, _encoder = ffmpeg.video_encode_args(options or {}, crf=12, preset="ultrafast")
     made = []
     for shot in shots:
         start, end = shot["start_s"], shot["end_s"]
@@ -73,7 +79,7 @@ def split_shots(input_path: str, shots: List[Dict[str, Any]], out_dir: str) -> L
             "-ss", f"{start:.3f}", "-i", input_path,
             "-t", f"{max(0.05, end - start):.3f}",
             "-map", "0:v:0", "-an",
-            "-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+            *enc_args,
             "-movflags", "+faststart", out,
         ])
         made.append({**shot, "path": out})
@@ -292,7 +298,9 @@ def fanout_stage(
     stage_dir = os.path.join(workdir, f"fanout_{stage}")
     os.makedirs(stage_dir, exist_ok=True)
     started = time.time()
-    shot_inputs = split_shots(input_path, shots, os.path.join(stage_dir, "shots"))
+    shot_inputs = split_shots(
+        input_path, shots, os.path.join(stage_dir, "shots"), options
+    )
     tasks = build_tasks(stage, shot_inputs, stage_dir, options)
 
     workers = int(options.get("fanout_workers", min(4, len(tasks))))

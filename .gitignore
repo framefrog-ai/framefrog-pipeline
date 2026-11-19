@@ -5,6 +5,9 @@ __pycache__/
 outputs/
 assets/sample/
 assets/models/*.onnx
+assets/models/*.pt
+assets/models/*.pth
+assets/models/*.engine
 assets/models/*.part
 .DS_Store
 *.egg-info/

@@ -31,6 +31,110 @@ def has_ffmpeg() -> bool:
     return shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
 
 
+# --------------------------------------------------------------------------- #
+# Encoders — libx264 by default, NVENC when the box has it
+# --------------------------------------------------------------------------- #
+_ENCODERS: Optional[set] = None
+
+_ALIASES = {
+    "": "auto",
+    "auto": "auto",
+    "cpu": "libx264",
+    "x264": "libx264",
+    "libx264": "libx264",
+    "nvenc": "h264_nvenc",
+    "gpu": "h264_nvenc",
+    "h264_nvenc": "h264_nvenc",
+    "hevc_nvenc": "hevc_nvenc",
+    "h265_nvenc": "hevc_nvenc",
+    "x265": "libx265",
+    "libx265": "libx265",
+}
+
+#: Approximate NVENC preset mapping from x264's names.
+_NVENC_PRESETS = {"ultrafast": "p1", "veryfast": "p3", "fast": "p4", "medium": "p5", "slow": "p6"}
+
+
+def available_encoders() -> set:
+    """Names advertised by ``ffmpeg -encoders`` (cached per process)."""
+    global _ENCODERS
+    if _ENCODERS is not None:
+        return _ENCODERS
+    names = set()
+    try:
+        proc = subprocess.run(
+            [ffmpeg_bin(), "-hide_banner", "-encoders"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+        )
+        text = proc.stdout or ""
+    except Exception:
+        text = ""
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0][:1] in {"V", "A", "S"}:
+            names.add(parts[1])
+    _ENCODERS = names
+    return names
+
+
+def has_encoder(name: str) -> bool:
+    return name in available_encoders()
+
+
+def choose_encoder(options: Optional[Dict] = None) -> str:
+    """Resolve ``options["encoder"]`` to a concrete FFmpeg encoder."""
+    alias = _ALIASES.get(str((options or {}).get("encoder", "auto")).lower())
+    if alias is None:
+        raise ValueError(
+            f"unknown encoder {options.get('encoder')!r}; "
+            "use auto|libx264|libx265|nvenc|h264_nvenc|hevc_nvenc"
+        )
+    if alias == "auto":
+        return "h264_nvenc" if has_encoder("h264_nvenc") else "libx264"
+    if alias.endswith("_nvenc") and not has_encoder(alias):
+        raise RuntimeError(
+            f"encoder {alias} requested but FFmpeg reports no NVENC support; "
+            "use encoder=auto or encoder=libx264, or install an NVENC-enabled FFmpeg"
+        )
+    if alias in {"libx264", "libx265"} and not has_encoder(alias):
+        raise RuntimeError(f"encoder {alias} not available in this FFmpeg build")
+    return alias
+
+
+def video_encode_args(
+    options: Optional[Dict] = None,
+    crf: int = 18,
+    preset: str = "veryfast",
+    encoder: Optional[str] = None,
+) -> tuple:
+    """Return ``(ffmpeg_args, encoder_name)`` for a video stream.
+
+    NVENC is chosen last-minute in ``auto`` mode, so the same job definition
+    runs on a CPU laptop and a GPU box. Manifest metadata should record the
+    second element.
+    """
+    name = encoder or choose_encoder(options)
+    if name == "libx264":
+        args = ["-c:v", "libx264", "-crf", str(crf), "-preset", preset, "-pix_fmt", "yuv420p"]
+    elif name == "libx265":
+        args = [
+            "-c:v", "libx265", "-crf", str(crf), "-preset", preset,
+            "-pix_fmt", "yuv420p", "-tag:v", "hvc1",
+        ]
+    elif name in {"h264_nvenc", "hevc_nvenc"}:
+        nv_preset = _NVENC_PRESETS.get(preset, "p4")
+        args = [
+            "-c:v", name, "-preset", nv_preset,
+            "-rc", "vbr", "-cq", str(crf), "-b:v", "0",
+            "-pix_fmt", "yuv420p",
+        ]
+        if name == "hevc_nvenc":
+            args += ["-tag:v", "hvc1"]
+    else:  # pragma: no cover - choose_encoder guards this
+        raise ValueError(f"unsupported encoder {name}")
+    return args, name
+
+
 def run(args: List[str], capture: bool = True) -> str:
     """Run a command, raise FFmpegError on failure, return stderr tail."""
     proc = subprocess.run(

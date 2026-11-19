@@ -76,6 +76,14 @@ def deepfilternet_available() -> bool:
         return False
 
 
+def _has(module: str) -> bool:
+    try:
+        importlib.import_module(module)
+        return True
+    except ImportError:
+        return False
+
+
 def model_report() -> Dict[str, object]:
     """Capability snapshot for /health and manifests."""
     rife_path = find_rife_model()
@@ -90,5 +98,14 @@ def model_report() -> Dict[str, object]:
             "model": os.path.basename(rife_path) if rife_path else None,
             "model_path": rife_path,
             "install": "python scripts/fetch_models.py",
+        },
+        "sam2": {
+            "available": _has("sam2") and _has("torch"),
+            "install": "pip install -r requirements-gpu.txt  # + scripts/fetch_models.py --sam2",
+        },
+        "upscale": {
+            "realesrgan": _has("realesrgan") and _has("basicsr") and _has("torch"),
+            "tensorrt": _has("tensorrt") and _has("pycuda"),
+            "weights": "Real-ESRGAN .pth or a TensorRT .engine",
         },
     }

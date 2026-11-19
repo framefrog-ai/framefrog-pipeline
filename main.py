@@ -18,7 +18,7 @@ import sys
 from typing import Dict, List, Optional
 
 from framefrog.pipeline import STAGE_NAMES, describe, run_job
-from framefrog.types import JobRequest
+from framefrog.types import DEFAULT_STAGES, JobRequest
 
 
 def post_production(
@@ -30,7 +30,7 @@ def post_production(
     """Serverless entrypoint: run a job and return the manifest."""
     req = JobRequest(
         input_uri=input_uri,
-        stages=stages or list(STAGE_NAMES),
+        stages=stages or list(DEFAULT_STAGES),
         options=options or {},
         output_dir=output_dir,
     )
@@ -45,8 +45,8 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     ap.add_argument("--input", required=True, help="local path or s3://bucket/key")
     ap.add_argument(
         "--stages",
-        default=",".join(STAGE_NAMES),
-        help=f"comma-separated stages (default: {','.join(STAGE_NAMES)})",
+        default=",".join(DEFAULT_STAGES),
+        help=f"comma-separated stages (default: {','.join(DEFAULT_STAGES)})",
     )
     ap.add_argument("--out", default=None, help="output directory (default: temp)")
     ap.add_argument("--lut", default="cinematic_warm", help="built-in look or .cube path")
@@ -89,6 +89,21 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--queue-url", default=None,
         help="fan-out queue: file://path or sqs://url (default: file queue under the job)",
     )
+    ap.add_argument(
+        "--encoder", choices=["auto", "libx264", "libx265", "nvenc", "h264_nvenc", "hevc_nvenc"],
+        default="auto", help="video encoder; auto picks NVENC when FFmpeg has it",
+    )
+    ap.add_argument("--target-height", type=int, default=2160, help="upscale target height")
+    ap.add_argument(
+        "--upscale-backend", choices=["auto", "tensorrt", "realesrgan", "ffmpeg"],
+        default="auto",
+    )
+    ap.add_argument("--upscale-engine", default=None, help="TensorRT .engine path")
+    ap.add_argument("--upscale-model", default=None, help="Real-ESRGAN .pth path")
+    ap.add_argument("--sam2-checkpoint", default=None, help="SAM 2 checkpoint (.pt)")
+    ap.add_argument("--sam2-config", default=None, help="SAM 2 model config yaml")
+    ap.add_argument("--rotoscope-mode", choices=["auto", "prompted"], default="auto")
+    ap.add_argument("--rotoscope-prompt", default=None, help="JSON seed for prompted mode")
     ap.add_argument("--json", action="store_true", help="print the full manifest as JSON")
     return ap.parse_args(argv)
 
@@ -106,6 +121,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         "interp_model": args.interp_model,
         "rife_provider": args.rife_provider,
     }
+    options["encoder"] = args.encoder
+    options["target_height"] = args.target_height
+    options["upscale_backend"] = args.upscale_backend
+    if args.upscale_engine:
+        options["upscale_engine"] = args.upscale_engine
+    if args.upscale_model:
+        options["upscale_model"] = args.upscale_model
+    if args.sam2_checkpoint:
+        options["sam2_checkpoint"] = args.sam2_checkpoint
+    if args.sam2_config:
+        options["sam2_config"] = args.sam2_config
+    options["rotoscope_mode"] = args.rotoscope_mode
+    if args.rotoscope_prompt:
+        import json as _json
+        options["rotoscope_prompt"] = _json.loads(args.rotoscope_prompt)
     if args.rife_onnx:
         options["rife_onnx"] = args.rife_onnx
     if args.webhook_url:
