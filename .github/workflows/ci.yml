@@ -60,6 +60,9 @@ jobs:
           set -o pipefail
           python -m pytest -q 2>&1 | tee pytest.log
 
+      - name: GPU smoke probe (CPU host)
+        run: python -m framefrog.gpu_check --json
+
       - name: Publish pytest output on failure
         if: failure()
         run: |

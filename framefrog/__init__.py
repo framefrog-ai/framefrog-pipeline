@@ -11,4 +11,4 @@ from framefrog.pipeline import STAGE_NAMES, run_job
 from framefrog.types import JobRequest, StageResult
 
 __all__ = ["JobRequest", "StageResult", "run_job", "STAGE_NAMES"]
-__version__ = "0.7.0"
+__version__ = "0.7.1"

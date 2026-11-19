@@ -162,6 +162,13 @@ class TensorRTUpscaler:
             out = np.clip(out * 255.0, 0, 255).astype(np.uint8)
         return out[:, :, ::-1].copy()
 
+    def expected_input_size(self) -> Optional[Tuple[int, int]]:
+        """Return ``(width, height)`` for a static engine, else ``None``."""
+        shape = self._input[1] if self._input else ()
+        if len(shape) == 4 and shape[2] > 0 and shape[3] > 0:
+            return (int(shape[3]), int(shape[2]))
+        return None
+
     def describe(self) -> dict:
         return {
             "engine": os.path.basename(self._engine_path),

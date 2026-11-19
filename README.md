@@ -208,6 +208,30 @@ never silently skipped.
 > guard rails and CPU fallbacks in CI; the TensorRT engine contract and SAM 2
 > integration need validation on a GPU host before production use.
 
+### GPU smoke test
+
+One command answers "will the GPU paths actually run on this box?":
+
+```bash
+python -m framefrog.gpu_check --all        # or: make gpu-check
+```
+
+It reports FFmpeg/NVENC availability (compiled vs. a real NVIDIA device), torch
+CUDA, TensorRT/PyCUDA/SAM 2/Real-ESRGAN runtimes, then runs the checks you
+configured:
+
+- **encode** — a 0.5 s synthetic H.264 encode with the auto-selected encoder
+  (NVENC on a GPU host, libx264 otherwise).
+- **tensorrt** (`--engine` or an `assets/models/*.engine` with `--all`) — load
+  the engine, infer one synthetic frame, report input/output shapes and timing.
+- **sam2** (`--sam2-checkpoint` or `--all`) — synthesise an 8-frame moving-square
+  clip, run the full `rotoscope` stage in `auto` mode, verify a non-empty matte.
+- **realesrgan** (`--realesrgan-model` or `--all`) — upscale one synthetic frame.
+
+Exit code is 0 when every *requested* check passes; skipped checks and a
+CPU-only host do not fail the probe. `--json` emits a machine-readable report;
+the same probe runs in CI to keep the command honest.
+
 All stages share one signature:
 
 ```python
