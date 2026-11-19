@@ -51,8 +51,21 @@ jobs:
         run: python -m compileall -q framefrog main.py demo.py scripts
 
       - name: Run tests
+        shell: bash
         env:
           # Models are not fetched in CI: RIFE tests detect an empty model dir
           # and skip, while the FFmpeg fallbacks still run for real.
           FRAMEFROG_MODEL_DIR: ${{ runner.temp }}/framefrog-models
-        run: python -m pytest -q
+        run: |
+          set -o pipefail
+          python -m pytest -q 2>&1 | tee pytest.log
+
+      - name: Publish pytest output on failure
+        if: failure()
+        run: |
+          {
+            echo '## pytest output (tail)'
+            echo '```'
+            tail -n 80 pytest.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
