@@ -50,6 +50,9 @@ jobs:
       - name: Compile check
         run: python -m compileall -q framefrog main.py demo.py scripts
 
+      - name: Verify SPDX headers and license
+        run: python scripts/check_spdx.py
+
       - name: Run tests
         shell: bash
         env:

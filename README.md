@@ -447,4 +447,8 @@ available to users over a network, you must offer those users the Corresponding
 Source (section 13). Running it locally or internally without offering it as a
 network service does not trigger that obligation.
 
+Every Python file carries SPDX headers; `python scripts/check_spdx.py` (also a
+CI step and `make spdx-check`) verifies the LICENSE text, the headers and their
+position relative to shebangs.
+
 © FrameFrog — [framefrog.me](https://framefrog.me) · contact@framefrog.me

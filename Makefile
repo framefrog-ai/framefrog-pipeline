@@ -1,4 +1,4 @@
-.PHONY: demo test api gpu-check clean
+.PHONY: demo test api gpu-check spdx-check clean
 
 demo:
 	python demo.py
@@ -14,6 +14,9 @@ api:
 
 gpu-check:
 	python -m framefrog.gpu_check --all
+
+spdx-check:
+	python scripts/check_spdx.py
 
 clean:
 	rm -rf outputs assets/sample
