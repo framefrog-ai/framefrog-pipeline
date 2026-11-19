@@ -86,6 +86,45 @@ Fallback semantics are explicit and recorded in the manifest:
 Model weights are not committed — `scripts/fetch_models.py` prints the SHA-256
 of the graph it writes, and the manifest records which graph and provider ran.
 
+### Per-shot fan-out
+
+When `scene_detect` has run, `color_grade` and `interpolate` can process each
+detected shot independently and stitch the results. This is off by default:
+
+```json
+{"fanout": "shots", "fanout_mode": "queue", "fanout_workers": 4}
+```
+
+| Option | Values | Meaning |
+|---|---|---|
+| `fanout` | `off` (default) / `auto` / `shots` | `auto` falls back to the monolithic stage and records `fanout_fallback_reason`; `shots` fails loudly |
+| `fanout_mode` | `inline` (default) / `queue` | bounded thread pool, or publish to a queue and consume |
+| `fanout_workers` | int | concurrent shot tasks (default ≤4) |
+| `queue_url` | `file://path` / `sqs://url` | queue backend; defaults to a file queue inside the job |
+| `queue_external` | bool | enqueue only and wait for a separate worker |
+| `fanout_timeout_s` | seconds | hard ceiling for result collection |
+
+How it works: shots are split at scene cuts (video only, re-encoded), each
+task calls the **same** `stage.run()` contract on its shot, results are
+collected in scene order, and the shot videos are concatenated. Audio is never
+fanned out — the original continuous track is muxed once at stitch time, so
+per-shot AAC priming cannot introduce seams. The stage manifest records
+`fanout`, backend, shot count, per-shot durations, cuts and the stitched
+duration.
+
+The file queue is claim-by-rename with lease recovery, so multiple worker
+processes on one host can share it. For a separate worker (another box, a GPU
+pod), run:
+
+```bash
+python -m framefrog.worker --queue-url file:///jobs/fj_x/fanout_color_grade/queue \
+    --results-dir /jobs/fj_x/fanout_color_grade/results --workers 4
+```
+
+With `"queue_external": true` the orchestrator only publishes and waits for the
+result files, so both sides need shared storage. `sqs://` uses the same
+payloads and ack/nack semantics through boto3.
+
 All stages share one signature:
 
 ```python
@@ -243,8 +282,9 @@ python -m pytest -q
 
 Coverage: LUT generation and fingerprints (no FFmpeg), scene detection on a
 synthetic hard cut (OpenCV only), model resolution and fallback semantics,
-signed-link HMACs, webhook delivery/redaction, cost accounting, a real FFmpeg
-integration run, and API smoke tests. The RIFE integration test runs only when
+signed-link HMACs, webhook delivery/redaction, cost accounting, file-queue
+claim/ack/nack semantics, per-shot split/queue/stitch on a real FFmpeg clip,
+and API smoke tests. The RIFE integration test runs only when
 both the graph and `onnxruntime` are present; FFmpeg-dependent tests skip
 automatically when the binary is missing.
 
@@ -275,7 +315,7 @@ the RIFE test skips there by design while the FFmpeg paths run for real.
 - [x] Manifest, API, tests, Docker
 - [x] DeepFilterNet3 behind `audio_cleanup`
 - [x] RIFE v4.9 (ONNX Runtime) behind `interpolate`
-- [ ] Per-shot fan-out via queue
+- [x] Per-shot fan-out via queue
 - [x] Signed upload/download URLs + job webhooks
 - [x] Model-aware cost accounting (GPU-seconds per stage)
 

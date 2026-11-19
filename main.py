@@ -76,6 +76,19 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--cpu-rate", type=float, default=None,
         help="CPU hourly USD for cost accounting (default: $FRAMEFROG_CPU_HOURLY_USD or 0)",
     )
+    ap.add_argument(
+        "--fanout", choices=["off", "auto", "shots"], default="off",
+        help="per-shot fan-out for color_grade/interpolate (default: off)",
+    )
+    ap.add_argument(
+        "--fanout-mode", choices=["inline", "queue"], default="inline",
+        help="run shot tasks in a thread pool or through a queue",
+    )
+    ap.add_argument("--fanout-workers", type=int, default=None)
+    ap.add_argument(
+        "--queue-url", default=None,
+        help="fan-out queue: file://path or sqs://url (default: file queue under the job)",
+    )
     ap.add_argument("--json", action="store_true", help="print the full manifest as JSON")
     return ap.parse_args(argv)
 
@@ -101,6 +114,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         options["gpu_hourly_usd"] = args.gpu_rate
     if args.cpu_rate is not None:
         options["cpu_hourly_usd"] = args.cpu_rate
+    if args.fanout != "off":
+        options["fanout"] = args.fanout
+        options["fanout_mode"] = args.fanout_mode
+        if args.fanout_workers:
+            options["fanout_workers"] = args.fanout_workers
+        if args.queue_url:
+            options["queue_url"] = args.queue_url
     manifest = post_production(args.input, stages=stages, options=options, output_dir=args.out)
 
     if args.json:

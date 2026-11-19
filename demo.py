@@ -66,6 +66,10 @@ def main() -> int:
     ap.add_argument(
         "--interp-model", choices=["auto", "rife", "ffmpeg"], default="auto"
     )
+    ap.add_argument(
+        "--fanout", choices=["off", "auto", "shots"], default="off",
+        help="grade/interpolate each detected shot, then stitch",
+    )
     args = ap.parse_args()
 
     sample = make_sample()
@@ -86,6 +90,7 @@ def main() -> int:
                 "interp_quality": "fast",
                 "denoise_model": args.denoise_model,
                 "interp_model": args.interp_model,
+                "fanout": args.fanout,
             },
             output_dir=OUT,
         )

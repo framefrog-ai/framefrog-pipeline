@@ -27,7 +27,7 @@ import traceback
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional
 
-from framefrog import ffmpeg, ops
+from framefrog import fanout, ffmpeg, ops
 from framefrog.stages import STAGES, STAGE_NAMES
 from framefrog.storage import is_remote, resolve_input
 from framefrog.types import JobRequest, StageResult, new_job_id
@@ -100,12 +100,30 @@ def run_job(req: JobRequest, progress: Optional[ProgressFn] = None, job_id: Opti
         }
 
         emit("running")
+        scenes: List[Dict] = []
         for name in req.stages:
             stage_fn = STAGES[name]
             stage_started = time.time()
             emit(f"stage:{name}")
+            fanout_fallback = None
+            fanout_result = None
+            if name in fanout.FANOUT_STAGES and scenes:
+                try:
+                    fanout_result = fanout.fanout_stage(
+                        name, current, workdir, scenes, req.options
+                    )
+                except Exception as exc:
+                    if str(req.options.get("fanout", "off")).lower() == "auto":
+                        fanout_fallback = f"{type(exc).__name__}: {exc}"
+                    else:
+                        raise
             try:
-                result: StageResult = stage_fn(current, workdir, req.options)
+                if fanout_result is not None:
+                    result = fanout_result
+                else:
+                    result = stage_fn(current, workdir, req.options)
+                    if fanout_fallback:
+                        result.meta["fanout_fallback_reason"] = fanout_fallback
             except Exception as exc:  # stage failure -> record and stop
                 manifest["stages"].append({
                     "stage": name,
@@ -127,6 +145,7 @@ def run_job(req: JobRequest, progress: Optional[ProgressFn] = None, job_id: Opti
                 current = result.output_uri
             if name == "scene_detect":
                 manifest["artifacts"]["scenes"] = result.meta.get("scenes_path")
+                scenes = result.meta.get("scenes") or []
             if name == "deliver":
                 manifest["artifacts"].update({
                     "master": result.meta.get("master"),
@@ -177,4 +196,5 @@ def describe() -> Dict:
         "stages": STAGE_NAMES,
         "models": model_report(),
         "ops": ops.capabilities(),
+        "fanout": fanout.fanout_capabilities(),
     }
