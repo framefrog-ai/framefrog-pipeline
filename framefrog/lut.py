@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """3D LUT handling: built-in looks, generation, and manifest fingerprints.
 
 FrameFrog ships a small set of looks as Adobe ``.cube`` files. They are

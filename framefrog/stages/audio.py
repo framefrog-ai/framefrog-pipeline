@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Stage 1 — audio cleanup.
 
 Denoise, de-hum and loudness-normalise the production audio without touching

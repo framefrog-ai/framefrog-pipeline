@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """TensorRT inference for the 4K upscaler.
 
 This is deliberately a *thin*, contract-driven runner rather than a bundle of

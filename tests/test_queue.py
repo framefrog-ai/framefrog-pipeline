@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """File-queue semantics: claim, ack, nack, lease recovery."""
 
 import os

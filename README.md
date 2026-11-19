@@ -1,6 +1,7 @@
 # FrameFrog Pipeline
 
 [![CI](https://github.com/framefrog-ai/framefrog-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/framefrog-ai/framefrog-pipeline/actions/workflows/ci.yml)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 
 > **FrameFrog** — AI cloud video post-production, as a pipeline you can actually run.
 >
@@ -232,6 +233,10 @@ Exit code is 0 when every *requested* check passes; skipped checks and a
 CPU-only host do not fail the probe. `--json` emits a machine-readable report;
 the same probe runs in CI to keep the command honest.
 
+Full host preparation — driver, CUDA, NVENC-enabled FFmpeg, torch wheels, SAM 2,
+weights, TensorRT engine build, troubleshooting and container notes — is in
+[docs/nvidia-host.md](docs/nvidia-host.md).
+
 All stages share one signature:
 
 ```python
@@ -431,5 +436,15 @@ the RIFE test skips there by design while the FFmpeg paths run for real.
 - [x] NVENC video encoding with automatic fallback
 
 ---
+
+## License
+
+FrameFrog is licensed under the **GNU Affero General Public License v3.0**
+(AGPL-3.0). See [LICENSE](LICENSE) for the full text.
+
+AGPL-3.0 is a strong copyleft license: if you modify FrameFrog and make it
+available to users over a network, you must offer those users the Corresponding
+Source (section 13). Running it locally or internally without offering it as a
+network service does not trigger that obligation.
 
 © FrameFrog — [framefrog.me](https://framefrog.me) · contact@framefrog.me

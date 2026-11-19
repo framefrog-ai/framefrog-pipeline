@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Shot planning, task isolation and the queue-backed fan-out path."""
 
 import os

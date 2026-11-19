@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """HTTP API — the thin serverless surface around the pipeline.
 
     uvicorn framefrog.api:app --port 8080

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Stage 3 — AI look matching and 3D LUT grading.
 
 The "AI" part lives upstream (a look suggestion service picks a LUT + strength

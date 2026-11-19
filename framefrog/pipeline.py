@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """The orchestrator: run stages in order, keep the manifest honest.
 
 A job is a directory:

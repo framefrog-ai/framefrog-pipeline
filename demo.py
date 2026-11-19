@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """End-to-end demo — no footage required.
 
 Generates a two-scene 6-second test clip with audio, then runs the full

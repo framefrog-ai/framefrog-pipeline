@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Operational plumbing: signed links, job webhooks, cost accounting.
 
 All three are opt-in and stdlib-only, so a bare FFmpeg box keeps working with

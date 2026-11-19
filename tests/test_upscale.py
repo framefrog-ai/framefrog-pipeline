@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """4K upscaling stage — FFmpeg path on CPU; GPU backends fail clearly."""
 
 import subprocess

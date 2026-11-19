@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Domain types shared by every stage.
 
 The pipeline is deliberately data-in / data-out: a :class:`JobRequest` goes in,

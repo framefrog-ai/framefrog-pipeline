@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Scene detection on a synthetic hard cut — pure OpenCV, no FFmpeg needed."""
 
 import os

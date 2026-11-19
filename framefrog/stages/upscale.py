@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Stage — 4K upscaling.
 
 Three backends, chosen by ``upscale_backend``:

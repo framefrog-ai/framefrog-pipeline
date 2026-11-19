@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Per-shot fan-out: split at scene cuts, grade/interpolate shots in parallel.
 
 Why per shot? A 40-shot commercial grades and interpolates faster as N

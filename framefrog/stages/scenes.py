@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Stage 2 — scene detection.
 
 Finds shot boundaries so grading, proxies and delivery notes can be applied

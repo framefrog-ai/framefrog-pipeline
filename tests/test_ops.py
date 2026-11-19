@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Signed links, webhooks and cost accounting — pure stdlib, no FFmpeg."""
 
 import time

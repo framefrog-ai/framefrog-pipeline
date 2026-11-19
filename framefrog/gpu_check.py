@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """GPU smoke test: NVENC, TensorRT, SAM 2 and Real-ESRGAN.
 
     python -m framefrog.gpu_check                 # environment + encode probe

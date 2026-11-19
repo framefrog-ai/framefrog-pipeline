@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Fetch the optional model weights used by the model-backed stages.
 
     python scripts/fetch_models.py            # RIFE v4.9 ONNX (21 MB)

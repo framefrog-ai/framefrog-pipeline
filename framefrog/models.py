@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Optional model runtimes: DeepFilterNet and RIFE.
 
 Both are optional. The pipeline works without them (FFmpeg filters), and uses

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Fan-out worker: drain a queue and execute shot tasks.
 
     python -m framefrog.worker --queue-url file:///tmp/fanout --results-dir /tmp/fanout/results

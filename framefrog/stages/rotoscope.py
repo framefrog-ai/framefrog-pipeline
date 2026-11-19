@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Stage — automatic rotoscoping with SAM 2.
 
 SAM 2 tracks an object through a video. This stage turns that into a

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Stage 4 — frame interpolation.
 
 Raises the frame rate to 60/120 fps. Two backends:

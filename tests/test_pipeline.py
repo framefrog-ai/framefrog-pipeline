@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Integration: a real clip through real FFmpeg (skipped if FFmpeg is absent)."""
 
 import json

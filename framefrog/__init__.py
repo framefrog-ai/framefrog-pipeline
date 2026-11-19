@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """FrameFrog — AI cloud video post-production pipeline.
 
 Public surface:
@@ -11,4 +14,4 @@ from framefrog.pipeline import STAGE_NAMES, run_job
 from framefrog.types import JobRequest, StageResult
 
 __all__ = ["JobRequest", "StageResult", "run_job", "STAGE_NAMES"]
-__version__ = "0.7.1"
+__version__ = "0.7.2"

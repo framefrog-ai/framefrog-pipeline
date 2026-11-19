@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Thin, dependency-free wrappers around the ffmpeg / ffprobe binaries.
 
 Every stage goes through this module so there is exactly one place that knows

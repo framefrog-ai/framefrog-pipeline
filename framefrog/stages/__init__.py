@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Stage registry.
 
 Adding a stage is: write ``framefrog/stages/<name>.py`` with a

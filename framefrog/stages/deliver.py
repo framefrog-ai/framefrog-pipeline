@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """Stage 5 — delivery.
 
 Pack the finished picture into deliverables: a mezzanine master, a 720p proxy,
