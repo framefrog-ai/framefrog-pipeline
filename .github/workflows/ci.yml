@@ -159,7 +159,8 @@ jobs:
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/repo" \
             zricethezav/gitleaks:v8.24.2 \
-            detect --source=/repo --no-banner --redact --exit-code 1
+            detect --source=/repo --no-banner --redact --exit-code 1 \
+            --config /repo/.gitleaks.toml
 
       - name: Dependency audit (pip-audit)
         run: |

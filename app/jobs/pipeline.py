@@ -316,16 +316,22 @@ def run_job(
             level=40,
             detail=safe_error(exc),
         )
-        log_event(
-            log,
-            "job_failed",
-            job_id=job_id,
-            error_code=getattr(exc, "code", "internal_error"),
-            level=40,
-        )
     finally:
         manifest["finished_at"] = utc_now()
         manifest["elapsed_s"] = round(time.time() - started, 3)
+
+        # The webhook is delivered for every finished job — success, failure
+        # or cancellation — and never changes the job's status.
+        webhook_url = request.options.get("webhook_url")
+        if webhook_url:
+            from app.core import ops
+
+            manifest["webhook"] = ops.notify_manifest(
+                manifest,
+                webhook_url,
+                secret=request.options.get("webhook_secret"),
+            )
+
         manifest_path = job_dir / "manifest.json"
         try:
             with open(manifest_path, "w", encoding="utf-8") as handle:
