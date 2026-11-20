@@ -1,0 +1,56 @@
+# GPU image — CUDA 12.1 runtime for RIFE (ONNX Runtime CUDA), DeepFilterNet
+# (PyTorch) and the optional SAM 2 / TensorRT stages.
+#
+#   docker build -f Dockerfile.gpu -t framefrog-pipeline:gpu .
+#
+# STATUS: DEFINED_PENDING_GPU_RUNTIME_VALIDATION — this image has not been
+# built or executed on a CUDA host from this repository.
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    APP_ENV=production \
+    WORK_DIR=/app/work \
+    MODEL_CACHE_DIR=/app/models \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        libgl1 \
+        libglib2.0-0 \
+        python3.11 \
+        python3.11-venv \
+        python3-pip \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd --system framefrog \
+    && useradd --system --gid framefrog --create-home --home-dir /home/framefrog framefrog \
+    && mkdir -p /app/work /app/models \
+    && chown -R framefrog:framefrog /app
+
+WORKDIR /app
+
+COPY pyproject.toml README.md LICENSE ./
+COPY app ./app
+COPY scripts ./scripts
+COPY main.py demo.py ./
+
+RUN python3.11 -m pip install --no-cache-dir --upgrade pip \
+    && python3.11 -m pip install --no-cache-dir \
+        --extra-index-url https://download.pytorch.org/whl/cu121 \
+        ".[audio,models,gpu]" \
+    && chown -R framefrog:framefrog /app
+
+USER framefrog
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD python3.11 -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=4).status == 200 else 1)"
+
+CMD ["python3.11", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
