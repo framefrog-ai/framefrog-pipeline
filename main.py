@@ -17,8 +17,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
-from app.core.config import operator_settings
+from app.core.config import operator_settings as operator_settings_base
 from app.jobs.models import DEFAULT_STAGES, JobRequest
 from app.jobs.pipeline import run_job
 
@@ -36,7 +37,24 @@ def post_production(
         options=options or {},
         output_dir=output_dir,
     )
-    return run_job(req, settings=operator_settings())
+    return run_job(req, settings=operator_settings(input_uri))
+
+
+def operator_settings(input_uri: str | None = None):
+    """Settings for local operator tooling.
+
+    The operator runs on the machine that holds the footage, so the directory
+    of the input file is added to the allowed input roots. The HTTP API never
+    uses this: it only reads from ``WORK_DIR`` and the configured roots.
+    """
+    settings = operator_settings_base()
+    if input_uri and not str(input_uri).startswith("s3://"):
+        candidate = Path(str(input_uri)).expanduser()
+        if candidate.exists():
+            parent = str(candidate.resolve().parent)
+            roots = ",".join(part for part in (settings.allowed_input_roots, parent) if part)
+            settings = settings.model_copy(update={"allowed_input_roots": roots})
+    return settings
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:

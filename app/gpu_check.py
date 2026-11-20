@@ -3,9 +3,9 @@
 
 """GPU smoke test: NVENC, TensorRT, SAM 2 and Real-ESRGAN.
 
-    python -m framefrog.gpu_check                 # environment + encode probe
-    python -m framefrog.gpu_check --all           # auto-discover weights in assets/models
-    python -m framefrog.gpu_check --engine up.engine \
+    python -m app.gpu_check                 # environment + encode probe
+    python -m app.gpu_check --all           # auto-discover weights in assets/models
+    python -m app.gpu_check --engine up.engine \
         --sam2-checkpoint assets/models/sam2.1_hiera_small.pt \
         --realesrgan-model assets/models/RealESRGAN_x4plus.pth
 
@@ -310,7 +310,7 @@ def _print_report(report: dict[str, Any]) -> None:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
-        prog="framefrog.gpu_check",
+        prog="app.gpu_check",
         description="Smoke-test NVENC, TensorRT, SAM 2 and Real-ESRGAN on this host",
     )
     ap.add_argument("--engine", default=None, help="TensorRT .engine to load and run")

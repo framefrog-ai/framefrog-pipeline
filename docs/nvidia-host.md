@@ -49,7 +49,7 @@ with `--enable-nvenc --enable-nvdec` and the NVIDIA codec headers.
 Verify what the pipeline will choose:
 
 ```bash
-python -c "from framefrog import ffmpeg; print(ffmpeg.choose_encoder({}))"
+python -c "from app.media import ffmpeg; print(ffmpeg.choose_encoder({}))"
 # h264_nvenc on a working host, libx264 otherwise
 ```
 
