@@ -189,7 +189,13 @@ curl -X POST http://localhost:8080/v1/jobs \
 
 Downloading without exposing the storage: set `SIGNING_SECRET` and every
 output carries a link that expires and is signed with an HMAC token. A
-tampered or expired link is refused.
+tampered or expired link is refused. With object storage the output carries
+a presigned URL instead.
+
+Notifying a caller: set `options.webhook_url` and the finished manifest is
+POSTed to it (HMAC-signed with `options.webhook_secret`). Delivery is
+best-effort and never changes the job status; the attempt is recorded in the
+manifest.
 
 Uploading without exposing local paths: ask for a presigned URL, PUT the file
 to object storage, then create the job with the returned `input_uri`.
