@@ -5,8 +5,9 @@
 > interpolation and MP4 delivery, orchestrated behind one FastAPI service and
 > a persistent job queue.
 
-[![CI](https://img.shields.io/github/actions/workflow/status/framefrog-ai/framefrog-pipeline/ci.yml?branch=feat/gpu-ready-pre-mvp&label=CI&logo=github&logoColor=10B981&labelColor=0D1117&color=10B981)](https://github.com/framefrog-ai/framefrog-pipeline/actions/workflows/ci.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/framefrog-ai/framefrog-pipeline/ci.yml?branch=main&label=CI&logo=github&logoColor=10B981&labelColor=0D1117&color=10B981)](https://github.com/framefrog-ai/framefrog-pipeline/actions/workflows/ci.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-10B981?style=for-the-badge&labelColor=0D1117)](./LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-10B981?style=for-the-badge&labelColor=0D1117)](./pyproject.toml)
 
 - **Product site:** <https://framefrog.me>
 - **Status of every feature:** [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md)
@@ -14,6 +15,27 @@
 - **Architecture:** [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)
 - **GPU validation plan:** [docs/GPU_VALIDATION.md](./docs/GPU_VALIDATION.md)
 - **Security model:** [SECURITY.md](./SECURITY.md)
+
+---
+
+## What it does
+
+Point it at rushes, get back a graded, denoised, scene-split master — one API call, one manifest.
+
+```bash
+pip install -e ".[dev]"
+python demo.py          # end-to-end on synthetic footage, no models needed
+```
+
+<p align="center">
+  <img src="docs/media/color-grade-before-after.png" alt="The same frame before and after the 3D LUT grade stage" width="900">
+</p>
+
+<p align="center"><sub>
+  The <code>color_grade</code> stage: one frame, RAW on the left, graded with
+  <code>cinematic_warm.cube</code> on the right. The whole pipeline — scene
+  detection, audio cleanup, grading, interpolation, delivery — is in the repo.
+</sub></p>
 
 ---
 
@@ -376,3 +398,36 @@ command timeouts and redacted signed URLs. The full model is in
 
 AGPL-3.0-or-later — see [LICENSE](./LICENSE). Third-party components keep
 their own licences; nothing upstream is vendored into this repository.
+
+## 19. Contributing
+
+This is a pre-MVP and it is open. Issues and pull requests are welcome, and
+the most useful contributions right now are the ones this repository cannot
+do for itself:
+
+- **A real GPU validation run.** Someone with an L40S or A100 and startup
+  credits can execute [the validation plan](./docs/GPU_VALIDATION.md) and
+  open a PR with the measured numbers. That is the single biggest gap.
+- **Reports from real footage.** Odd codecs, corrupt files, huge files,
+  unusual aspect ratios — the media validation layer is only as good as the
+  edge cases it has met.
+- **Stage bugs with a manifest attached.** Every job writes a manifest with
+  per-stage timings and fallbacks; that is usually enough to reproduce a
+  problem.
+
+If you are evaluating FrameFrog for a real pipeline, open an issue describing
+your input and what you expected — that feedback shapes the next release
+more than any single feature request.
+
+## 20. Star it
+
+If this is the kind of pipeline you have been looking for, a star helps other
+developers find it. Stars are the only distribution this project has right
+now, and they cost nothing.
+
+[![Star on GitHub](https://img.shields.io/github/stars/framefrog-ai/framefrog-pipeline?style=for-the-badge&labelColor=0D1117&color=10B981&logo=github&logoColor=white)](https://github.com/framefrog-ai/framefrog-pipeline/stargazers)
+
+- **Watch** the repository to follow the GPU validation results.
+- **Sponsor** or **fund** the GPU validation run — that is the current
+  bottleneck, and it costs compute credits, not code.
+- **Share** it with someone who cuts video for a living.
