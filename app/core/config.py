@@ -19,7 +19,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 #: API keys that must never reach production.
@@ -38,12 +38,26 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        # A field with an alias may still be set by its own name, so tests and
+        # code can pass `signing_secret=...` directly.
+        populate_by_name=True,
     )
 
     # -- service ---------------------------------------------------------- #
     app_env: AppEnv = "development"
     log_level: str = "INFO"
     api_key: SecretStr | None = None
+
+    #: HMAC key used to sign artefact download links. Without it no signed
+    #: link is issued.
+    signing_secret: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("SIGNING_SECRET", "FRAMEFROG_SIGNING_SECRET"),
+    )
+    signing_ttl_seconds: int = Field(
+        default=3600,
+        validation_alias=AliasChoices("SIGNING_TTL_SECONDS", "FRAMEFROG_SIGNING_TTL"),
+    )
 
     # -- storage / persistence -------------------------------------------- #
     work_dir: Path = Path("./work")

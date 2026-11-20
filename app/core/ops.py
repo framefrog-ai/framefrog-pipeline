@@ -86,7 +86,7 @@ def download_url(
     expires_at = int(time.time()) + max(1, ttl)
     token = sign_download(job_id, artifact, expires_at, secret)
     query = urllib.parse.urlencode({"expires": expires_at, "token": token})
-    return f"{base_url.rstrip('/')}/jobs/{job_id}/download?{query}"
+    return f"{base_url.rstrip('/')}/v1/jobs/{job_id}/download?{query}"
 
 
 def signing_enabled() -> bool:

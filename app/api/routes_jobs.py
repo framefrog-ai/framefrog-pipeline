@@ -7,6 +7,8 @@
     GET  /v1/jobs/{job_id}         job state, stage results, outputs
     POST /v1/jobs/{job_id}/cancel  request cancellation
     GET  /v1/jobs/{job_id}/outputs the produced artifacts
+    POST /v1/jobs/upload-url       presigned upload URL for a source file
+    GET  /v1/jobs/{job_id}/download  a signed artefact download
 
 The create endpoint never blocks on processing: it persists the job and hands
 it to the background runner.
@@ -14,10 +16,12 @@ it to the background runner.
 
 from __future__ import annotations
 
+import os
 import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request, status
+from fastapi.responses import FileResponse
 
 from app.api.deps import get_repository, get_runner, get_settings_dep, require_auth
 from app.api.schemas import (
@@ -31,8 +35,9 @@ from app.api.schemas import (
     to_stage_options,
     validate_target_fps,
 )
+from app.core import ops
 from app.core.config import Settings
-from app.core.errors import ConflictError, NotFoundError
+from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.core.logging import get_logger, log_event
 from app.core.security import parse_input_uri
 from app.jobs.models import DEFAULT_STAGES, JobRecord, new_job_id
@@ -58,6 +63,12 @@ def _to_response(record: JobRecord) -> JobResponse:
         error=ErrorModel(**record.error) if record.error else None,
         gpu_validation_status=record.gpu_validation_status,
     )
+
+
+def _signing_secret(settings: Settings) -> str:
+    if settings.signing_secret:
+        return settings.signing_secret.get_secret_value()
+    return ""
 
 
 @router.post("", response_model=JobResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -108,6 +119,126 @@ def create_job(
     return _to_response(repository.require(record.job_id))
 
 
+@router.get("/{job_id}", response_model=JobResponse)
+def get_job(
+    job_id: str,
+    request: Request,
+    settings: Settings = Depends(get_settings_dep),
+    repository: JobRepository = Depends(get_repository),
+    _auth: None = Depends(require_auth),
+) -> JobResponse:
+    """Return the current state of a job."""
+    record = repository.get(job_id)
+    if record is None:
+        raise NotFoundError("job not found", details={"job_id": job_id})
+    response = _to_response(record)
+    response.outputs = [
+        _with_download_url(entry, request, settings, record.job_id) for entry in response.outputs
+    ]
+    return response
+
+
+@router.post("/{job_id}/cancel", response_model=JobResponse)
+def cancel_job(
+    job_id: str,
+    repository: JobRepository = Depends(get_repository),
+    _auth: None = Depends(require_auth),
+) -> JobResponse:
+    """Request cancellation of a running job.
+
+    The flag is checked between stages; a job that already finished cannot be
+    cancelled.
+    """
+    record = repository.get(job_id)
+    if record is None:
+        raise NotFoundError("job not found", details={"job_id": job_id})
+    if JobState(record.status).is_terminal:
+        raise ConflictError(
+            "job already finished and cannot be cancelled",
+            details={"job_id": job_id, "status": record.status},
+        )
+    if not repository.request_cancel(job_id):
+        raise ConflictError("cancellation could not be requested", details={"job_id": job_id})
+    log_event(log, "job_cancel_requested", job_id=job_id)
+    return _to_response(repository.require(job_id))
+
+
+@router.get("/{job_id}/outputs", response_model=list[OutputModel])
+def job_outputs(
+    job_id: str,
+    request: Request,
+    settings: Settings = Depends(get_settings_dep),
+    repository: JobRepository = Depends(get_repository),
+    _auth: None = Depends(require_auth),
+) -> list[OutputModel]:
+    """List the artifacts produced by a job."""
+    record = repository.get(job_id)
+    if record is None:
+        raise NotFoundError("job not found", details={"job_id": job_id})
+    entries = [
+        _with_download_url(OutputModel(**entry), request, settings, job_id) for entry in record.outputs or []
+    ]
+    return list(entries)
+
+
+@router.get("/{job_id}/download")
+def download_artifact(
+    job_id: str,
+    request: Request,
+    artifact: str = "master",
+    token: str = "",
+    expires: int = 0,
+    repository: JobRepository = Depends(get_repository),
+    settings: Settings = Depends(get_settings_dep),
+    _auth: None = Depends(require_auth),
+) -> FileResponse:
+    """Download one artefact of a job.
+
+    The link is signed: it carries an expiry and an HMAC token, so it can be
+    handed to a client without giving that client any other access.
+    """
+    record = repository.get(job_id)
+    if record is None:
+        raise NotFoundError("job not found", details={"job_id": job_id})
+
+    secret = _signing_secret(settings)
+    if secret:
+        ok, reason = ops.verify_download(job_id, artifact, expires, token, secret)
+        if not ok:
+            raise ValidationError(f"signed link rejected: {reason}")
+
+    entry = next((item for item in record.outputs or [] if item.get("kind") == artifact), None)
+    if entry is None:
+        raise NotFoundError(
+            "job has no such artefact",
+            details={"job_id": job_id, "artifact": artifact},
+        )
+    path = entry.get("path")
+    if not path or not os.path.exists(path):
+        raise ConflictError(
+            "the artefact is not available on this node",
+            details={"job_id": job_id, "artifact": artifact},
+        )
+    return FileResponse(path, media_type="video/mp4", filename=os.path.basename(path))
+
+
+def _with_download_url(entry: OutputModel, request: Request, settings: Settings, job_id: str) -> OutputModel:
+    """Add a download link to an output entry when one can be issued."""
+    data = entry.model_dump()
+    secret = _signing_secret(settings)
+    if secret and data.get("path"):
+        url = ops.download_url(
+            str(request.base_url),
+            job_id,
+            artifact=str(data.get("kind") or "master"),
+            secret=secret,
+            ttl=settings.signing_ttl_seconds,
+        )
+        if url:
+            data["download_url"] = url
+    return OutputModel(**data)
+
+
 @router.post("/upload-url", response_model=UploadUrlResponse)
 def create_upload_url(
     body: UploadUrlRequest,
@@ -146,55 +277,3 @@ def create_upload_url(
         expires_in=settings.presigned_url_expiry_seconds,
         key=key,
     )
-
-
-@router.get("/{job_id}", response_model=JobResponse)
-def get_job(
-    job_id: str,
-    repository: JobRepository = Depends(get_repository),
-    _auth: None = Depends(require_auth),
-) -> JobResponse:
-    """Return the current state of a job."""
-    record = repository.get(job_id)
-    if record is None:
-        raise NotFoundError("job not found", details={"job_id": job_id})
-    return _to_response(record)
-
-
-@router.post("/{job_id}/cancel", response_model=JobResponse)
-def cancel_job(
-    job_id: str,
-    repository: JobRepository = Depends(get_repository),
-    _auth: None = Depends(require_auth),
-) -> JobResponse:
-    """Request cancellation of a running job.
-
-    The flag is checked between stages; a job that already finished cannot be
-    cancelled.
-    """
-    record = repository.get(job_id)
-    if record is None:
-        raise NotFoundError("job not found", details={"job_id": job_id})
-    if JobState(record.status).is_terminal:
-        raise ConflictError(
-            "job already finished and cannot be cancelled",
-            details={"job_id": job_id, "status": record.status},
-        )
-    if not repository.request_cancel(job_id):
-        raise ConflictError("cancellation could not be requested", details={"job_id": job_id})
-    log_event(log, "job_cancel_requested", job_id=job_id)
-    return _to_response(repository.require(job_id))
-
-
-@router.get("/{job_id}/outputs", response_model=list[OutputModel])
-def job_outputs(
-    job_id: str,
-    repository: JobRepository = Depends(get_repository),
-    _auth: None = Depends(require_auth),
-) -> list[OutputModel]:
-    """List the artifacts produced by a job."""
-    record = repository.get(job_id)
-    if record is None:
-        raise NotFoundError("job not found", details={"job_id": job_id})
-    outputs: list[dict[str, Any]] = list(record.outputs or [])
-    return [OutputModel(**entry) for entry in outputs]

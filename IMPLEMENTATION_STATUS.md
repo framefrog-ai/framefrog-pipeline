@@ -68,7 +68,8 @@ produced by a command in this repository.
 | NVENC hardware encoding | IMPLEMENTED_PENDING_GPU_VALIDATION | `tests/unit/test_encoders.py` (selection logic only) | NVIDIA GPU | none | `auto` falls back to libx264 without a device | `python main.py --input clip.mp4 --encoder nvenc` on a GPU host |
 | SAM 2 rotoscoping | IMPLEMENTED_PENDING_GPU_VALIDATION | `tests/unit/test_rotoscope.py` (contract only) | NVIDIA GPU | none | SAM 2 is not on PyPI and needs a checkpoint | `pip install -e ".[gpu]" && python scripts/download_models.py --sam2 small` |
 | 4K upscaling (TensorRT / Real-ESRGAN) | IMPLEMENTED_PENDING_GPU_VALIDATION | `tests/unit/test_upscale.py` (contract only) | NVIDIA GPU | none | Not part of the supported API surface | `python scripts/gpu_smoke_test.py` |
-| Signed download URLs and job webhooks (`app/core/ops.py`) | IMPLEMENTED_AND_CPU_TESTED | `tests/unit/test_ops.py` | CPU | webhook receiver (not exercised live) | Not exposed on the `/v1` API yet | `pytest tests/unit/test_ops.py -v` |
+| Signed download URLs and job webhooks (`app/core/ops.py`) | IMPLEMENTED_AND_CPU_TESTED | `tests/unit/test_ops.py` | CPU | webhook receiver (not exercised live) | The download side is exposed on `/v1`; the webhook side is not | `pytest tests/unit/test_ops.py -v` |
+| Signed artefact downloads (`GET /v1/jobs/{job_id}/download`) | IMPLEMENTED_AND_CPU_TESTED | `tests/integration/test_signed_downloads.py` | CPU | none | Needs `SIGNING_SECRET`; without it no link is issued | `pytest tests/integration/test_signed_downloads.py -v` |
 
 ## 4. Storage
 
@@ -111,7 +112,7 @@ produced by a command in this repository.
 | Load testing | NOT_IMPLEMENTED | Concurrency limit exists, no capacity numbers are known |
 | Cost optimisation | NOT_IMPLEMENTED | Rates are configurable, no figures are published |
 | PostgreSQL job store | NOT_IMPLEMENTED | The repository interface allows it; the implementation does not exist |
-| Presigned download links on the `/v1` API | NOT_IMPLEMENTED | The primitives exist in `app/core/ops.py` and `app/storage/s3.py`, the route does not |
+| Presigned download links on the `/v1` API | NOT_IMPLEMENTED | The HMAC-signed local download route exists; a presigned **S3** download URL is not attached to the output entries yet |
 | Container scanning in CI | IMPLEMENTED_NOT_TESTED | the Trivy step is configured in `.github/workflows/ci.yml`; it has never run because the workflow has not been executed on GitHub |
 
 ## 7. What the GPU phase must still prove

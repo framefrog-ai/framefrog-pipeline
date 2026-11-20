@@ -38,7 +38,7 @@ def test_missing_secret_is_rejected():
 def test_download_url_uses_env(monkeypatch):
     monkeypatch.setenv(ops.ENV_SIGNING_SECRET, "k")
     url = ops.download_url("http://h:8000/", "fj_1", ttl=30)
-    assert url.startswith("http://h:8000/jobs/fj_1/download?")
+    assert url.startswith("http://h:8000/v1/jobs/fj_1/download?")
     assert "token=" in url and "expires=" in url
 
 

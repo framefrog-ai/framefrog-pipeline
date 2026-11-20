@@ -116,6 +116,7 @@ start on an invalid configuration.
 | `APP_ENV` | `development` | `development` / `test` / `production` |
 | `LOG_LEVEL` | `INFO` | Log level for the JSON logger |
 | `API_KEY` | *(empty)* | Required in production; `X-API-Key` or `Authorization: Bearer` |
+| `SIGNING_SECRET` | *(empty)* | HMAC key for signed artefact download links |
 | `WORK_DIR` | `./work` | Job working directory and SQLite location |
 | `DATABASE_URL` | `sqlite:///./work/framefrog.db` | Job store |
 | `STORAGE_BACKEND` | `local` | `local` or `s3` |
@@ -164,7 +165,8 @@ Interactive API docs: <http://localhost:8080/docs>.
 | `POST` | `/v1/jobs` | Create a job — returns `202` immediately |
 | `GET` | `/v1/jobs/{job_id}` | Job state, stage results, outputs |
 | `POST` | `/v1/jobs/{job_id}/cancel` | Request cancellation |
-| `GET` | `/v1/jobs/{job_id}/outputs` | Produced artifacts |
+| `GET` | `/v1/jobs/{job_id}/outputs` | Produced artifacts (with signed download links) |
+| `GET` | `/v1/jobs/{job_id}/download` | Signed artefact download (`?artifact=master&expires=…&token=…`) |
 | `POST` | `/v1/jobs/upload-url` | Presigned upload URL for a source file (object storage only) |
 
 ```bash
@@ -184,6 +186,10 @@ curl -X POST http://localhost:8080/v1/jobs \
     "idempotency_key": "rushes-2026-11-19-a"
   }'
 ```
+
+Downloading without exposing the storage: set `SIGNING_SECRET` and every
+output carries a link that expires and is signed with an HMAC token. A
+tampered or expired link is refused.
 
 Uploading without exposing local paths: ask for a presigned URL, PUT the file
 to object storage, then create the job with the returned `input_uri`.
