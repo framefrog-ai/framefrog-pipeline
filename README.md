@@ -211,6 +211,11 @@ A stage option with an explicit `"enabled": false` (`audio_cleanup`,
 records it with status `skipped` instead of running it. Only an explicit flag
 disables a stage — the defaults never do.
 
+`fanout.mode` decides how the heavy stages are executed: `off` (the default),
+`shots` (each detected shot is processed separately and the shots are
+stitched back together) or `auto` (per-shot, falling back to the monolithic
+stage if the fan-out fails — the reason is recorded in the manifest).
+
 Local inputs are restricted to `WORK_DIR` (plus `ALLOWED_INPUT_ROOTS`); the
 CLI additionally allows the current directory because it runs on the
 operator's machine.

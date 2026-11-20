@@ -45,6 +45,7 @@ from app.stages.base import (
     STATUS_FAILED,
     STATUS_PENDING_GPU_VALIDATION,
     STATUS_SKIPPED,
+    StageResult,
 )
 
 log = get_logger("pipeline")
@@ -193,7 +194,6 @@ def run_job(
                     }
                 )
                 raise JobCancelledSignal(name)
-            stage_fn = STAGES[name]
             stage_started = time.time()
             emit(f"stage:{name}")
             stage_options = dict(request.options)
@@ -204,7 +204,13 @@ def run_job(
                 # Interpolation must not blend across a hard cut.
                 stage_options["scenes"] = scenes
             try:
-                result = stage_fn(str(current or source), str(workdir), stage_options)
+                result = _run_stage(
+                    name,
+                    str(current or source),
+                    str(workdir),
+                    stage_options,
+                    scenes,
+                )
             except CapabilityError as exc:
                 manifest["stages"].append(
                     {
@@ -342,6 +348,40 @@ class JobCancelledSignal(Exception):
     def __init__(self, stage: str) -> None:
         super().__init__(f"cancelled at stage {stage}")
         self.stage = stage
+
+
+def _run_stage(
+    name: str,
+    input_path: str,
+    workdir: str,
+    options: dict[str, Any],
+    scenes: list[dict[str, Any]],
+) -> StageResult:
+    """Run one stage, per shot when the fan-out is enabled.
+
+    ``options["fanout"]`` is ``off`` (default), ``auto`` (per-shot when it
+    works, monolithic when it fails) or ``shots`` (per-shot, and a failure is
+    a failure of the job).
+    """
+    from app.jobs import fanout
+
+    fallback_reason: str | None = None
+    if name in fanout.FANOUT_STAGES and scenes:
+        try:
+            fanout_result = fanout.fanout_stage(name, input_path, workdir, scenes, options)
+        except Exception as exc:
+            if str(options.get("fanout", "off")).lower() == "auto":
+                fallback_reason = f"{type(exc).__name__}: {exc}"
+            else:
+                raise
+        else:
+            if fanout_result is not None:
+                return fanout_result
+
+    result = STAGES[name](input_path, workdir, options)
+    if fallback_reason:
+        result.meta["fanout_fallback_reason"] = fallback_reason
+    return result
 
 
 def _publish_outputs(

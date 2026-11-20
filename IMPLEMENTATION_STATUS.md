@@ -47,7 +47,8 @@ produced by a command in this repository.
 | Idempotency keys | IMPLEMENTED_AND_CPU_TESTED | `tests/integration/test_api.py` | CPU | none | Keys are unique per database, not per caller | `pytest -k idempotency -v` |
 | Cancellation (flag checked between stages and inside RIFE) | IMPLEMENTED_AND_CPU_TESTED | `tests/integration/test_runner.py`, `tests/integration/test_api.py` | CPU | none | A running FFmpeg process is not interrupted mid-encode | `pytest -k cancel -v` |
 | Deterministic stage order and per-job temp directory | IMPLEMENTED_AND_CPU_TESTED | `tests/integration/test_pipeline.py` | CPU | none | Intermediates are kept after the run (no auto-clean yet) | `pytest tests/integration/test_pipeline.py -v` |
-| Per-shot fan-out over a file/SQS queue | IMPLEMENTED_AND_CPU_TESTED | `tests/unit/test_fanout.py`, `tests/unit/test_queue.py` | CPU | SQS for the SQS backend (not exercised live) | The SQS backend was never run against a real queue | `pytest tests/unit/test_queue.py -v` |
+| Per-shot fan-out over a file/SQS queue | IMPLEMENTED_AND_CPU_TESTED | `tests/unit/test_fanout.py`, `tests/unit/test_queue.py`, `tests/integration/test_fanout_request_path.py` | CPU | SQS for the SQS backend (not exercised live) | The SQS backend was never run against a real queue | `pytest tests/unit/test_queue.py -v` |
+| Fan-out in the request path (`options.fanout.mode`) | IMPLEMENTED_AND_CPU_TESTED | `tests/integration/test_fanout_request_path.py` | CPU | none | `auto` degrades to the monolithic stage and records why; `shots` fails the job | `pytest tests/integration/test_fanout_request_path.py -v` |
 
 ## 3. Media, stages and delivery
 

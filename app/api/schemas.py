@@ -92,6 +92,16 @@ class ColorGradeOptions(BaseModel):
         return self
 
 
+class FanoutOptions(BaseModel):
+    """Per-shot processing of the expensive stages."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["off", "auto", "shots"] = "off"
+    workers: int = Field(default=4, ge=1, le=32)
+    mode_backend: Literal["inline", "queue"] = "inline"
+
+
 class DeliverOptions(BaseModel):
     """Final delivery (MP4 / H.264 / AAC)."""
 
@@ -117,6 +127,7 @@ class JobOptions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     scene_detect: SceneDetectOptions = Field(default_factory=SceneDetectOptions)
+    fanout: FanoutOptions = Field(default_factory=FanoutOptions)
     audio_cleanup: AudioCleanupOptions = Field(default_factory=AudioCleanupOptions)
     interpolate: InterpolateOptions = Field(default_factory=InterpolateOptions)
     color_grade: ColorGradeOptions = Field(default_factory=ColorGradeOptions)
@@ -304,6 +315,9 @@ def to_stage_options(options: JobOptions) -> dict[str, Any]:
         "master_crf": options.deliver.crf,
         "master_preset": options.deliver.preset,
         "encoder": "auto",
+        "fanout": options.fanout.mode,
+        "fanout_mode": options.fanout.mode_backend,
+        "fanout_workers": options.fanout.workers,
     }
     if options.color_grade.enabled:
         flat["lut"] = options.color_grade.lut_uri or "cinematic_warm"

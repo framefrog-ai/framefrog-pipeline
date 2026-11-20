@@ -438,7 +438,7 @@ exist:
 | Cost optimisation | **Not implemented.** No model caching strategy, no spot/priority scheduling, no encoder-cost heuristics beyond the `auto` encoder choice. |
 | Generated colour looks | Written to `MODEL_CACHE_DIR/luts`, `WORK_DIR/luts` or the system temp directory — never into the source tree. The committed `assets/luts/cinematic_warm.cube` is read from the repository root. |
 | Output upload to object storage | Implemented for the S3 backend: after the stages, `pipeline.py` publishes the master, proxy and poster under the output prefix and records the remote URI. The local backend keeps the files in the job workdir. |
-| Fan-out in the request path | `fanout.fanout_stage()` is implemented and tested, but `pipeline.py` calls the stage registry directly and never invokes it. |
+| Fan-out in the request path | Wired: `pipeline.py` calls `fanout.fanout_stage()` for the grade and interpolation stages when `options.fanout.mode` is `auto` or `shots`. |
 | Signed download links, webhooks, cost in the manifest | Implemented in `app/core/ops.py` and covered by unit tests, but not wired into the API routes or the pipeline manifest. |
 | PostgreSQL job store | `repository_from_settings` raises `NotImplementedError` for `postgres://` URLs. |
 | WAL mode | Enabled (`PRAGMA journal_mode=WAL`), but the database file is still container/node-local. |
