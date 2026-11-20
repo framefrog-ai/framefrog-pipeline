@@ -1,0 +1,116 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "framefrog"
+version = "0.8.0"
+description = "FrameFrog — AI cloud video post-production pipeline"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "AGPL-3.0-or-later" }
+authors = [{ name = "FrameFrog" }]
+keywords = ["video", "post-production", "ffmpeg", "pyscenedetect", "rife", "cuda"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Framework :: FastAPI",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Multimedia :: Video",
+]
+
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.29",
+  "pydantic>=2.6",
+  "pydantic-settings>=2.2",
+  "numpy>=1.26",
+  "opencv-python-headless>=4.9",
+  "scenedetect>=0.6.4",
+  "boto3>=1.34",
+  "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+# Neural speech cleanup (DeepFilterNet3). Pulls torch/torchaudio.
+audio = ["deepfilternet>=0.5.6"]
+# RIFE inference runtime (CPU build). The weights are fetched separately.
+models = ["onnxruntime>=1.17"]
+# GPU runtimes. Install the CUDA build of torch that matches the driver first.
+gpu = [
+  "torch>=2.3",
+  "torchvision>=0.18",
+  "onnxruntime-gpu>=1.17",
+]
+# Optional 4K/rotoscope backends.
+gpu-extra = [
+  "realesrgan>=0.3.0",
+  "basicsr>=1.4.2",
+  "tensorrt>=10.0",
+]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "httpx>=0.27",
+  "ruff>=0.6",
+  "mypy>=1.10",
+  "pip-audit>=2.7",
+]
+
+[project.scripts]
+framefrog = "main:main"
+framefrog-worker = "app.jobs.worker:main"
+
+[project.urls]
+Homepage = "https://framefrog.me"
+Repository = "https://github.com/framefrog-ai/framefrog-pipeline"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+extend-exclude = ["outputs", "assets"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
+ignore = [
+  "E501",    # line length is handled by the formatter
+  "B008",    # FastAPI Depends() in defaults is the documented pattern
+  "SIM105",  # contextlib.suppress is slower than try/except for hot paths
+  "UP038",   # isinstance tuple form is slower on 3.11
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402"]
+"scripts/*" = ["E402"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_configs = true
+ignore_missing_imports = true
+check_untyped_defs = true
+disallow_untyped_defs = false
+no_implicit_optional = true
+warn_redundant_casts = true
+exclude = ["outputs/", "assets/", "build/"]
+
+[[tool.mypy.overrides]]
+module = ["scenedetect.*", "df.*", "onnxruntime.*", "torch.*", "boto3.*", "botocore.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra --strict-markers"
+markers = [
+  "gpu: requires a CUDA GPU; skipped automatically when CUDA is unavailable",
+  "integration: exercises the application end to end (FFmpeg, HTTP, storage)",
+]
+filterwarnings = [
+  "ignore::DeprecationWarning:scenedetect.*",
+]

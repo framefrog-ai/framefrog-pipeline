@@ -2,13 +2,13 @@
 #
 #   pip install -r requirements-gpu.txt
 #
-# Install the CUDA build of torch that matches your driver first; then SAM 2
+# Install the CUDA build of torch that matches your driver first, then SAM 2
 # from source (it is not on PyPI):
 #
 #   pip install git+https://github.com/facebookresearch/sam2.git
 #
 # TensorRT upscaling additionally needs a system CUDA toolkit and `trtexec`
-# (or Polygraphy) to build an engine; see the README chapter.
+# (or Polygraphy) to build an engine.
 #
 # Note: basicsr 1.4.2 imports torchvision.transforms.functional_tensor, which
 # moved in torchvision 0.17+. If installation fails, install
@@ -16,8 +16,4 @@
 
 torch>=2.3              # SAM 2 + Real-ESRGAN
 torchvision>=0.18       # SAM 2 image ops
-realesrgan>=0.3.0       # 4K learned upscaling (PyTorch path)
-basicsr>=1.4.2          # RRDBNet definition used by Real-ESRGAN
-tensorrt>=10.0          # optional: run a prebuilt upscaling engine
-pycuda>=2024.1          # optional: host/device transfers for TensorRT
-onnxruntime-gpu>=1.17   # optional: RIFE on CUDA (CPU wheel works too)
+onnxruntime-gpu>=1.17   # RIFE on CUDA (the CPU wheel works too)

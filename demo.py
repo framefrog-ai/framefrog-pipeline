@@ -28,9 +28,10 @@ import os
 import sys
 import time
 
-from framefrog import ffmpeg
-from framefrog.pipeline import run_job
-from framefrog.types import JobRequest
+from app.core.config import operator_settings
+from app.jobs.models import JobRequest
+from app.jobs.pipeline import run_job
+from app.media import ffmpeg
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SAMPLE_DIR = os.path.join(ROOT, "assets", "sample")
@@ -45,32 +46,55 @@ def make_sample() -> str:
     if not ffmpeg.has_ffmpeg():
         raise SystemExit("ffmpeg is required for the demo: apt install ffmpeg")
     print("• generating 6 s two-scene sample (testsrc2 → smptebars + 440 Hz tone)")
-    ffmpeg.run([
-        ffmpeg.ffmpeg_bin(), "-y",
-        "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:duration=3",
-        "-f", "lavfi", "-i", "smptebars=size=640x360:rate=30:duration=3",
-        "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=6",
-        "-filter_complex",
-        "[0:v][1:v]concat=n=2:v=1:a=0[v];[2:a]volume=0.4[a]",
-        "-map", "[v]", "-map", "[a]",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "128k",
-        SAMPLE,
-    ])
+    ffmpeg.run(
+        [
+            ffmpeg.ffmpeg_bin(),
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=640x360:rate=30:duration=3",
+            "-f",
+            "lavfi",
+            "-i",
+            "smptebars=size=640x360:rate=30:duration=3",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000:duration=6",
+            "-filter_complex",
+            "[0:v][1:v]concat=n=2:v=1:a=0[v];[2:a]volume=0.4[a]",
+            "-map",
+            "[v]",
+            "-map",
+            "[a]",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            SAMPLE,
+        ]
+    )
     return SAMPLE
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="FrameFrog end-to-end demo")
     ap.add_argument("--quick", action="store_true", help="skip frame interpolation")
+    ap.add_argument("--denoise-model", choices=["auto", "deepfilternet", "ffmpeg"], default="auto")
+    ap.add_argument("--interp-model", choices=["auto", "rife", "ffmpeg"], default="auto")
     ap.add_argument(
-        "--denoise-model", choices=["auto", "deepfilternet", "ffmpeg"], default="auto"
-    )
-    ap.add_argument(
-        "--interp-model", choices=["auto", "rife", "ffmpeg"], default="auto"
-    )
-    ap.add_argument(
-        "--fanout", choices=["off", "auto", "shots"], default="off",
+        "--fanout",
+        choices=["off", "auto", "shots"],
+        default="off",
         help="grade/interpolate each detected shot, then stitch",
     )
     args = ap.parse_args()
@@ -96,7 +120,8 @@ def main() -> int:
                 "fanout": args.fanout,
             },
             output_dir=OUT,
-        )
+        ),
+        settings=operator_settings(),
     )
     elapsed = time.time() - started
 
@@ -126,11 +151,10 @@ def main() -> int:
     master = ffmpeg.probe(art["master"])
     print(
         f"\nMaster: {master.width}x{master.height} @ {master.fps:.0f} fps · "
-        f"{master.duration_s:.2f} s · {master.size_bytes/1e6:.2f} MB · {elapsed:.1f}s total"
+        f"{master.duration_s:.2f} s · {master.size_bytes / 1e6:.2f} MB · {elapsed:.1f}s total"
     )
     scenes = manifest["stages"][1]["meta"]
-    print(f"Scenes: {scenes['scene_count']} detected via {scenes['method']} "
-          f"(cuts at {scenes['cuts_s']} s)")
+    print(f"Scenes: {scenes['scene_count']} detected via {scenes['method']} (cuts at {scenes['cuts_s']} s)")
 
     cost = manifest.get("cost") or {}
     if cost.get("stages"):

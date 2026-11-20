@@ -1,7 +1,21 @@
 __pycache__/
 *.py[cod]
 .venv/
+venv/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# job working directory and database
+work/
+*.db
+*.db-wal
+*.db-shm
+
+# generated media and model weights
 outputs/
 assets/sample/
 assets/models/*.onnx
@@ -9,5 +23,6 @@ assets/models/*.pt
 assets/models/*.pth
 assets/models/*.engine
 assets/models/*.part
+models/
+
 .DS_Store
-*.egg-info/
