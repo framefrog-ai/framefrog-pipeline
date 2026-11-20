@@ -22,13 +22,14 @@ from __future__ import annotations
 import os
 
 from app.media import ffmpeg
-from app.media.lut import ensure_lut, lut_fingerprint
+from app.media.lut import lut_fingerprint
+from app.media.lut_resolver import resolve_lut
 from app.stages.base import StageResult
 
 
 def run(input_path: str, workdir: str, options: dict) -> StageResult:
     out = os.path.join(workdir, "03_graded.mp4")
-    lut_path = ensure_lut(str(options.get("lut", "cinematic_warm")))
+    lut_path = resolve_lut(str(options.get("lut", "cinematic_warm")))
     strength = float(options.get("look_strength", 1.0))
     strength = min(1.0, max(0.0, strength))
 

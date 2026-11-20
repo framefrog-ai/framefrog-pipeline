@@ -9,6 +9,15 @@ Relevant sources: `app/core/security.py`, `app/core/config.py`,
 `app/api/deps.py`, `app/core/logging.py`, `app/storage/s3.py`,
 `app/media/ffmpeg.py`, `app/jobs/repository.py`.
 
+### Colour looks are read from trusted directories only
+
+The grade stage applies a `.cube` file from disk, so the reference is
+resolved through `app/media/lut_resolver.py`: a built-in look, or a file
+inside `assets/luts`, `$FRAMEFROG_LUT_DIR`, `$MODEL_CACHE_DIR/luts` or
+`$WORK_DIR/luts`. A path anywhere else is refused, the file is validated
+(extension, size, `LUT_3D_SIZE`, row count, value range) and its SHA-256 is
+recorded in the manifest. Remote (`s3://`) looks are refused by the stage.
+
 ## 1. Threat model in one paragraph
 
 The service accepts a URI pointing at media, hands it to FFmpeg, and returns

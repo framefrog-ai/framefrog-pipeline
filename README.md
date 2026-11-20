@@ -258,6 +258,11 @@ Colour looks live in `assets/luts/` (committed). A look that has to be
 generated at runtime is written to the model cache (`MODEL_CACHE_DIR/luts`),
 the work directory or the system temp directory — never into the source tree.
 
+A grade only applies a **built-in look** or a file inside a trusted LUT
+directory (`assets/luts`, `$FRAMEFROG_LUT_DIR`, `$MODEL_CACHE_DIR/luts`,
+`$WORK_DIR/luts`). Any other path is refused, so a request cannot make the
+pipeline read an arbitrary file from the host.
+
 ## 10. DeepFilterNet (audio cleanup)
 
 The adapter extracts mono 48 kHz PCM, runs DeepFilterNet3, loudness

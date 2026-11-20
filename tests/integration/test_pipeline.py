@@ -60,7 +60,11 @@ def test_color_grade_produces_a_real_file(sample_video, tmp_path, monkeypatch):
     from app.media.lut import write_lut
     from app.stages import color_grade
 
-    lut = write_lut("cinematic_warm", str(tmp_path / "look.cube"), size=9)
+    # A LUT is only applied when it lives in a trusted LUT directory.
+    lut_dir = tmp_path / "luts"
+    lut_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("FRAMEFROG_LUT_DIR", str(lut_dir))
+    lut = write_lut("cinematic_warm", str(lut_dir / "look.cube"), size=9)
     result = color_grade.run(str(sample_video), str(tmp_path), {"lut": lut})
     assert os.path.exists(result.output_uri)
     assert os.path.getsize(result.output_uri) > 0
