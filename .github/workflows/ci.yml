@@ -152,10 +152,11 @@ jobs:
           cache-dependency-path: pyproject.toml
 
       - name: Secret scan
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/repo" \
+            zricethezav/gitleaks:v8.24.2 \
+            detect --source=/repo --no-banner --redact
 
       - name: Dependency audit
         run: |
