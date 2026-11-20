@@ -25,6 +25,7 @@ from app.core.logging import get_logger, log_event
 from app.jobs.models import JobRecord, JobRequest, utc_now
 from app.jobs.pipeline import run_job
 from app.jobs.repository import JobRepository
+from app.jobs.retention import cleanup_finished_jobs
 from app.jobs.states import JobState
 
 log = get_logger("runner")
@@ -64,6 +65,7 @@ class JobRunner:
                 max_workers=self.max_workers, thread_name_prefix="framefrog-job"
             )
             log_event(log, "runner_started", workers=self.max_workers)
+            self._cleanup_old_jobs()
 
     def shutdown(self, wait: bool = True) -> None:
         """Stop the thread pool."""
@@ -104,6 +106,16 @@ class JobRunner:
     def _cleanup(self, job_id: str) -> None:
         with self._lock:
             self._futures.pop(job_id, None)
+
+    def _cleanup_old_jobs(self) -> None:
+        """Reclaim the disk of jobs that finished long enough ago."""
+        try:
+            cleanup_finished_jobs(self.settings, self.repository)
+        except Exception as exc:  # never fail a job over housekeeping
+            log.warning(
+                "retention_cleanup_failed",
+                extra={"extra_fields": {"error": f"{type(exc).__name__}: {exc}"}},
+            )
 
     # -- execution ------------------------------------------------------------ #
     def _cancelled(self, job_id: str) -> bool:
@@ -149,6 +161,7 @@ class JobRunner:
             }
 
         self._finalise(record, manifest, started)
+        self._cleanup_old_jobs()
         return manifest
 
     @staticmethod

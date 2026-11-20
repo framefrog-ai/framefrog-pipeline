@@ -106,6 +106,10 @@ class JobRepository(ABC):
         """Whether cancellation was requested."""
 
     @abstractmethod
+    def delete(self, job_id: str) -> bool:
+        """Remove a job row. Returns whether a row was removed."""
+
+    @abstractmethod
     def close(self) -> None:
         """Release resources."""
 

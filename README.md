@@ -125,6 +125,7 @@ start on an invalid configuration.
 | `MAX_VIDEO_WIDTH` / `MAX_VIDEO_HEIGHT` | `3840` / `2160` | Largest accepted resolution |
 | `MAX_OUTPUT_FPS` | `60` | Highest accepted frame rate (and interpolation target) |
 | `MAX_CONCURRENT_JOBS` | `2` | Jobs running in parallel |
+| `JOB_RETENTION_HOURS` | `24` | How long a finished job and its media are kept (0 keeps everything) |
 | `FFMPEG_PATH` / `FFPROBE_PATH` | `ffmpeg` / `ffprobe` | Binary locations |
 | `S3_ENDPOINT_URL` | *(none)* | Custom endpoint (Cloudflare R2, MinIO) |
 | `S3_REGION` / `S3_BUCKET` | `us-east-1` / *(none)* | Object store |
@@ -327,7 +328,19 @@ It has **not** been deployed from this repository; see
 | Parallel jobs | `MAX_CONCURRENT_JOBS` (2) |
 | Colour grade intensity | 1.0 only (partial blending is not implemented) |
 
-## 14. Security
+## 14. Housekeeping
+
+A finished job keeps its media for `JOB_RETENTION_HOURS` (24 by default).
+After that the directory and the job row are removed, so a long-running
+service does not fill the disk. A job that is still queued or running is
+never touched.
+
+```bash
+python scripts/cleanup_jobs.py --dry-run   # what would be removed
+python scripts/cleanup_jobs.py             # remove it
+```
+
+## 15. Security
 
 API key authentication outside development mode, SSRF protection (loopback,
 private, link-local and cloud-metadata destinations are refused), local path
@@ -336,7 +349,7 @@ containment under `WORK_DIR`, traversal rejection, media limits, no
 command timeouts and redacted signed URLs. The full model is in
 [SECURITY.md](./SECURITY.md).
 
-## 15. Known limitations
+## 16. Known limitations
 
 - No GPU execution has been validated; every GPU claim is `pending`.
 - The job runner is in-process (threads); there is no distributed queue.
@@ -348,7 +361,7 @@ command timeouts and redacted signed URLs. The full model is in
 - 4K, 120 fps, multi-GPU, Kubernetes, dashboard, billing and multi-region are
   out of scope for this phase.
 
-## 16. Roadmap
+## 17. Roadmap
 
 1. Validate CUDA execution, RIFE performance, VRAM and cost per video minute
    once startup cloud credits are available ([plan](./docs/GPU_VALIDATION.md)).
@@ -358,7 +371,7 @@ command timeouts and redacted signed URLs. The full model is in
 5. Per-tenant keys, quotas and rate limiting.
 6. Partial LUT intensity blending, once implemented and tested.
 
-## 17. Licence
+## 18. Licence
 
 AGPL-3.0-or-later — see [LICENSE](./LICENSE). Third-party components keep
 their own licences; nothing upstream is vendored into this repository.

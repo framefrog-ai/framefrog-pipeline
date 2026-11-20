@@ -1,4 +1,4 @@
-.PHONY: help install install-dev install-audio install-models check-env demo quick test test-cpu test-gpu api api-reload gpu-check gpu-smoke spdx-check docker-build docker-run models models-verify clean
+.PHONY: help install install-dev install-audio install-models check-env demo quick test test-cpu test-gpu api api-reload gpu-check gpu-smoke spdx-check docker-build docker-run models models-verify cleanup-jobs clean
 
 PYTHON ?= python
 PORT ?= 8080
@@ -63,6 +63,9 @@ docker-build:  ## build the CPU image
 
 docker-run:  ## run the CPU image
 	docker run --rm -p $(PORT):$(PORT) -e APP_ENV=development framefrog-pipeline:cpu
+
+cleanup-jobs:  ## remove finished jobs past the retention window
+	$(PYTHON) scripts/cleanup_jobs.py
 
 clean:  ## remove generated artefacts
 	rm -rf outputs work assets/sample .pytest_cache .mypy_cache .ruff_cache

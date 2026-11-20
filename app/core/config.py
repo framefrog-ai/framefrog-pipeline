@@ -72,6 +72,9 @@ class Settings(BaseSettings):
     max_output_fps: int = 60
     max_concurrent_jobs: int = 2
 
+    #: How long a finished job (and its media) is kept. 0 keeps everything.
+    job_retention_hours: int = 24
+
     # -- binaries ----------------------------------------------------------- #
     ffmpeg_path: str = "ffmpeg"
     ffprobe_path: str = "ffprobe"
