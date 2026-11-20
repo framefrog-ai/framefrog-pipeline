@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "feat/**"]
   pull_request:
 
 permissions:
@@ -12,12 +12,43 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-jobs:
-  test:
-    name: pytest (Python 3.11, FFmpeg)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+env:
+  PYTHON_VERSION: "3.11"
 
+jobs:
+  lint:
+    name: lint (ruff, mypy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install "ruff>=0.6" "mypy>=1.10"
+
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Ruff format check
+        run: ruff format --check .
+
+      - name: MyPy
+        run: mypy app
+
+  test:
+    name: pytest (Python 3.11, FFmpeg, CPU)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,16 +61,14 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-models.txt
+          cache-dependency-path: pyproject.toml
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -e ".[dev]"
 
       - name: Show toolchain
         run: |
@@ -47,24 +76,21 @@ jobs:
           ffmpeg -version | head -n 1
           pytest --version
 
-      - name: Compile check
-        run: python -m compileall -q framefrog main.py demo.py scripts
-
       - name: Verify SPDX headers and license
         run: python scripts/check_spdx.py
 
-      - name: Run tests
+      - name: Check the environment
+        run: python scripts/check_environment.py
+
+      - name: Run the CPU test suite
         shell: bash
         env:
-          # Models are not fetched in CI: RIFE tests detect an empty model dir
-          # and skip, while the FFmpeg fallbacks still run for real.
-          FRAMEFROG_MODEL_DIR: ${{ runner.temp }}/framefrog-models
+          # Models are not fetched in CI: the RIFE tests detect an empty model
+          # directory and skip, while the FFmpeg fallbacks still run for real.
+          MODEL_CACHE_DIR: ${{ runner.temp }}/framefrog-models
         run: |
           set -o pipefail
-          python -m pytest -q 2>&1 | tee pytest.log
-
-      - name: GPU smoke probe (CPU host)
-        run: python -m framefrog.gpu_check --json
+          python -m pytest -m "not gpu" -v 2>&1 | tee pytest.log
 
       - name: Publish pytest output on failure
         if: failure()
@@ -81,3 +107,77 @@ jobs:
           tail = " | ".join(lines[-30:])
           print(f"::error::{tail[:3500]}")
           PY
+
+  docker:
+    name: docker build (CPU image)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the CPU image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          tags: framefrog-pipeline:cpu
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test the image
+        run: |
+          # The image defaults to APP_ENV=production, where an API key is
+          # mandatory — the check therefore runs in development mode.
+          docker run --rm -e APP_ENV=development framefrog-pipeline:cpu python scripts/check_environment.py
+          docker run --rm -e APP_ENV=development framefrog-pipeline:cpu python -c "from app.main import create_app; print('app import ok')"
+
+  security:
+    name: security (secret scan, dependency audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+
+      - name: Dependency audit
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-audit
+          pip install -e ".[dev]"
+          pip-audit --strict --progress-spinner off -r <(python - <<'PY'
+          from importlib.metadata import requires
+          print("\n".join(requires("framefrog") or []))
+          PY
+          ) || pip-audit --progress-spinner off
+
+  spdx:
+    name: SPDX and licence
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Verify SPDX headers
+        run: python scripts/check_spdx.py
