@@ -14,6 +14,7 @@ it to the background runner.
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request, status
@@ -25,6 +26,8 @@ from app.api.schemas import (
     JobResponse,
     OutputModel,
     StageResultModel,
+    UploadUrlRequest,
+    UploadUrlResponse,
     to_stage_options,
     validate_target_fps,
 )
@@ -103,6 +106,46 @@ def create_job(
         idempotent=bool(body.idempotency_key),
     )
     return _to_response(repository.require(record.job_id))
+
+
+@router.post("/upload-url", response_model=UploadUrlResponse)
+def create_upload_url(
+    body: UploadUrlRequest,
+    request: Request,
+    settings: Settings = Depends(get_settings_dep),
+    _auth: None = Depends(require_auth),
+) -> UploadUrlResponse:
+    """Create a presigned upload URL for a source file.
+
+    The returned ``input_uri`` is what the caller passes to ``POST /v1/jobs``
+    once the file has been uploaded. Object storage only: the local backend
+    has nothing to sign.
+    """
+    storage = request.app.state.storage
+    upload = getattr(storage, "presign_put", None)
+    if upload is None:
+        raise ConflictError(
+            "the configured storage backend does not support presigned uploads",
+            details={"backend": getattr(storage, "name", "unknown")},
+        )
+    token = uuid.uuid4().hex
+    key = storage.build_key(storage.input_prefix, "uploads", token, body.filename)
+    url = upload(key, settings.presigned_url_expiry_seconds)
+    if not url:
+        raise ConflictError(
+            "the configured storage backend could not produce an upload URL",
+            details={"backend": getattr(storage, "name", "unknown")},
+        )
+    bucket = settings.s3_bucket or ""
+    input_uri = f"s3://{bucket}/{key}" if bucket else key
+    log_event(log, "upload_url_created", key=key)
+    return UploadUrlResponse(
+        input_uri=input_uri,
+        upload_url=url,
+        method="PUT",
+        expires_in=settings.presigned_url_expiry_seconds,
+        key=key,
+    )
 
 
 @router.get("/{job_id}", response_model=JobResponse)

@@ -160,6 +160,7 @@ Interactive API docs: <http://localhost:8080/docs>.
 | `GET` | `/v1/jobs/{job_id}` | Job state, stage results, outputs |
 | `POST` | `/v1/jobs/{job_id}/cancel` | Request cancellation |
 | `GET` | `/v1/jobs/{job_id}/outputs` | Produced artifacts |
+| `POST` | `/v1/jobs/upload-url` | Presigned upload URL for a source file (object storage only) |
 
 ```bash
 curl -X POST http://localhost:8080/v1/jobs \
@@ -177,6 +178,17 @@ curl -X POST http://localhost:8080/v1/jobs \
     },
     "idempotency_key": "rushes-2026-11-19-a"
   }'
+```
+
+Uploading without exposing local paths: ask for a presigned URL, PUT the file
+to object storage, then create the job with the returned `input_uri`.
+
+```bash
+curl -X POST http://localhost:8080/v1/jobs/upload-url \
+  -H "X-API-Key: $API_KEY" -H 'Content-Type: application/json' \
+  -d '{"filename": "rushes.mp4"}'
+# -> {"input_uri": "s3://my-bucket/inputs/uploads/<token>/rushes.mp4",
+#     "upload_url": "https://...", "method": "PUT", "expires_in": 900}
 ```
 
 Job lifecycle: `queued → acquiring_input → validating → processing → uploading

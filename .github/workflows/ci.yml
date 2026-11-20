@@ -137,9 +137,9 @@ jobs:
           docker run --rm -e APP_ENV=development framefrog-pipeline:cpu python -c "from app.main import create_app; print('app import ok')"
 
   security:
-    name: security (secret scan, dependency audit)
+    name: security (secret scan, dependency audit, container scan)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -167,6 +167,19 @@ jobs:
           print("\n".join(requires("framefrog") or []))
           PY
           ) || pip-audit --progress-spinner off
+
+      - name: Build the image for the container scan
+        run: docker build -t framefrog-pipeline:cpu .
+
+      - name: Container scan (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: framefrog-pipeline:cpu
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
 
   spdx:
     name: SPDX and licence

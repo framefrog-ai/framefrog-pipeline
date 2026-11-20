@@ -158,6 +158,41 @@ class JobCreateRequest(BaseModel):
         return value
 
 
+class UploadUrlRequest(BaseModel):
+    """Body of ``POST /v1/jobs/upload-url``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    filename: str = Field(..., min_length=1, max_length=255)
+    content_type: str = Field(default="video/mp4", max_length=128)
+
+    @field_validator("filename")
+    @classmethod
+    def _safe_filename(cls, value: str) -> str:
+        name = value.strip()
+        if not name:
+            raise ValueError("filename must not be empty")
+        if "/" in name or "\\" in name:
+            raise ValueError("filename must not contain a path separator")
+        if name in {".", ".."} or name.startswith("."):
+            raise ValueError("filename is not a valid object name")
+        if "\x00" in name:
+            raise ValueError("filename contains a null byte")
+        return name
+
+
+class UploadUrlResponse(BaseModel):
+    """Where to PUT the file and which URI to use as the job input."""
+
+    model_config = ConfigDict(extra="allow")
+
+    input_uri: str
+    upload_url: str
+    method: str = "PUT"
+    expires_in: int
+    key: str
+
+
 class StageResultModel(BaseModel):
     """One stage of a job."""
 

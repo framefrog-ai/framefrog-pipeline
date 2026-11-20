@@ -77,6 +77,7 @@ produced by a command in this repository.
 | Local filesystem storage | IMPLEMENTED_AND_CPU_TESTED | `tests/unit/test_storage.py` | CPU | none | — | `pytest -k "local" -v` |
 | S3-compatible storage (boto3, custom endpoint for R2) | IMPLEMENTED_AND_CPU_TESTED | `tests/unit/test_storage.py` against a fake boto3 client | CPU | S3 / R2 / MinIO | **No live bucket was used** — the repository has no credentials; live behaviour (IAM, presigned URLs, multipart) is unverified | `STORAGE_BACKEND=s3 S3_BUCKET=… pytest tests/integration/test_storage_s3.py -v` against a real bucket |
 | Presigned upload / download URLs with expiry | IMPLEMENTED_AND_CPU_TESTED | `tests/unit/test_storage.py` | CPU | S3-compatible service | Signed query strings are redacted in logs but returned in full to the caller | `pytest -k presign -v` |
+| Presigned upload flow for API clients (`POST /v1/jobs/upload-url`) | IMPLEMENTED_AND_CPU_TESTED | `tests/integration/test_upload_flow.py` | CPU | S3-compatible service | Object storage only; the local backend answers 409 because it has nothing to sign | `pytest tests/integration/test_upload_flow.py -v` |
 | Object-key sanitisation (no prefix escape) | IMPLEMENTED_AND_CPU_TESTED | `tests/unit/test_security.py`, `tests/unit/test_storage.py` | CPU | none | — | `pytest -k "key or traversal" -v` |
 
 ## 5. Deployment and operations
@@ -110,6 +111,7 @@ produced by a command in this repository.
 | Cost optimisation | NOT_IMPLEMENTED | Rates are configurable, no figures are published |
 | PostgreSQL job store | NOT_IMPLEMENTED | The repository interface allows it; the implementation does not exist |
 | Presigned download links on the `/v1` API | NOT_IMPLEMENTED | The primitives exist in `app/core/ops.py` and `app/storage/s3.py`, the route does not |
+| Container scanning in CI | IMPLEMENTED_NOT_TESTED | the Trivy step is configured in `.github/workflows/ci.yml`; it has never run because the workflow has not been executed on GitHub |
 
 ## 7. What the GPU phase must still prove
 
