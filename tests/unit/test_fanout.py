@@ -8,8 +8,9 @@ import subprocess
 
 import pytest
 
-from framefrog import fanout, ffmpeg
-from framefrog.fanout import build_tasks, run_task, shots_from_scenes
+from app.jobs import fanout
+from app.jobs.fanout import build_tasks, run_task, shots_from_scenes
+from app.media import ffmpeg
 
 
 def test_shots_are_normalised_and_clamped():
@@ -42,31 +43,60 @@ def test_build_tasks_strips_orchestration_keys(tmp_path):
 
 
 def test_run_task_records_failure(tmp_path):
-    result = run_task({
-        "task_id": "bad_000",
-        "stage": "does_not_exist",
-        "input": "missing.mp4",
-        "workdir": str(tmp_path / "w"),
-        "shot_index": 0,
-        "options": {},
-    })
+    result = run_task(
+        {
+            "task_id": "bad_000",
+            "stage": "does_not_exist",
+            "input": "missing.mp4",
+            "workdir": str(tmp_path / "w"),
+            "shot_index": 0,
+            "options": {},
+        }
+    )
     assert result["status"] == "failed"
     assert "KeyError" in result["error"]
 
 
 def _two_shot_clip(tmp_path):
     out = str(tmp_path / "two_shots.mp4")
-    subprocess.run([
-        "ffmpeg", "-y",
-        "-f", "lavfi", "-i", "testsrc2=size=160x96:rate=12:duration=2",
-        "-f", "lavfi", "-i", "smptebars=size=160x96:rate=12:duration=2",
-        "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=4",
-        "-filter_complex",
-        "[0:v][1:v]concat=n=2:v=1:a=0[v];[2:a]volume=0.3[a]",
-        "-map", "[v]", "-map", "[a]",
-        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "128k", "-shortest", out,
-    ], check=True, capture_output=True)
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=160x96:rate=12:duration=2",
+            "-f",
+            "lavfi",
+            "-i",
+            "smptebars=size=160x96:rate=12:duration=2",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000:duration=4",
+            "-filter_complex",
+            "[0:v][1:v]concat=n=2:v=1:a=0[v];[2:a]volume=0.3[a]",
+            "-map",
+            "[v]",
+            "-map",
+            "[a]",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-shortest",
+            out,
+        ],
+        check=True,
+        capture_output=True,
+    )
     return out
 
 

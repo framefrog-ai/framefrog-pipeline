@@ -5,7 +5,7 @@
 
 import pytest
 
-from framefrog import ffmpeg
+from app.media import ffmpeg
 
 pytestmark = pytest.mark.skipif(not ffmpeg.has_ffmpeg(), reason="ffmpeg not installed")
 

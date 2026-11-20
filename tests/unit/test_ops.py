@@ -5,7 +5,7 @@
 
 import time
 
-import framefrog.ops as ops
+import app.core.ops as ops
 
 
 def test_sign_verify_roundtrip():
@@ -58,9 +58,7 @@ def test_webhook_is_signed_and_redacted(monkeypatch):
 
     monkeypatch.setattr(ops, "_post_json", fake_post)
     manifest = {"job_id": "fj_1", "status": "completed", "manifest_path": "/secret"}
-    record = ops.notify_manifest(
-        manifest, "https://hook.example/x?token=abc", secret="k", attempts=1
-    )
+    record = ops.notify_manifest(manifest, "https://hook.example/x?token=abc", secret="k", attempts=1)
     assert record["delivered"] is True
     assert record["attempts"] == 1
     assert record["url"] == "https://hook.example/x"
@@ -82,11 +80,19 @@ def test_webhook_failure_is_recorded(monkeypatch):
 
 def test_costs_follow_the_backend_actually_used():
     stages = [
-        {"stage": "audio_cleanup", "status": "completed", "duration_s": 36.0,
-         "meta": {"denoise_model": "deepfilternet"}},
+        {
+            "stage": "audio_cleanup",
+            "status": "completed",
+            "duration_s": 36.0,
+            "meta": {"denoise_model": "deepfilternet"},
+        },
         {"stage": "scene_detect", "status": "completed", "duration_s": 18.0, "meta": {}},
-        {"stage": "interpolate", "status": "completed", "duration_s": 36.0,
-         "meta": {"interp_model": "RIFE v4.9 (ONNX Runtime)"}},
+        {
+            "stage": "interpolate",
+            "status": "completed",
+            "duration_s": 36.0,
+            "meta": {"interp_model": "RIFE v4.9 (ONNX Runtime)"},
+        },
     ]
     cost = ops.compute_costs(stages, gpu_hourly_usd=3.0, cpu_hourly_usd=0.3)
     assert cost["gpu_seconds"] == 72.0

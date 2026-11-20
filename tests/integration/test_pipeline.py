@@ -1,137 +1,176 @@
 # SPDX-FileCopyrightText: 2026 FrameFrog
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Integration: a real clip through real FFmpeg (skipped if FFmpeg is absent)."""
+"""End-to-end pipeline integration: real FFmpeg, real output files."""
+
+from __future__ import annotations
 
 import json
 import os
-import subprocess
 
 import pytest
 
-from framefrog import ffmpeg
-from framefrog.pipeline import run_job
-from framefrog.types import JobRequest
-
-pytestmark = pytest.mark.skipif(not ffmpeg.has_ffmpeg(), reason="ffmpeg not installed")
-
-
-@pytest.fixture(scope="module")
-def clip(tmp_path_factory):
-    out = str(tmp_path_factory.mktemp("clip") / "src.mp4")
-    subprocess.run([
-        "ffmpeg", "-y",
-        "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=24:duration=2",
-        "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2",
-        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-shortest", out,
-    ], check=True, capture_output=True)
-    return out
+from app.jobs.models import JobRequest
+from app.jobs.pipeline import run_job
+from app.media import validation
+from app.media.ffprobe import probe
 
 
-def test_full_pipeline_without_interpolation(clip, tmp_path):
+def _settings(tmp_path):
+    from app.core.config import Settings
+
+    work_dir = tmp_path / "work"
+    work_dir.mkdir(parents=True, exist_ok=True)
+    return Settings(
+        app_env="test",
+        work_dir=work_dir,
+        database_url=f"sqlite:///{tmp_path / 'jobs.db'}",
+        storage_backend="local",
+        log_level="WARNING",
+    )
+
+
+def _inside_workdir(settings, sample):
+    """Copy the sample into ``WORK_DIR`` — the API only reads inputs from there."""
+    import shutil
+
+    target = settings.work_dir_resolved / sample.name
+    shutil.copyfile(sample, target)
+    return target
+
+
+def test_scene_detection_finds_the_generated_cut(sample_video, tmp_path):
+    from app.stages import scene_detect
+
+    result = scene_detect.run(str(sample_video), str(tmp_path), {"scene_threshold": 0.27, "min_scene_s": 0.5})
+    assert result.meta["scene_count"] >= 2
+    scenes = result.meta["scenes"]
+    assert scenes[0]["start_s"] == 0.0
+    assert scenes[-1]["end_s"] == pytest.approx(6.0, abs=0.5)
+    for scene in scenes:
+        assert scene["end_s"] > scene["start_s"]
+        assert "start_frame" in scene and "end_frame" in scene
+        assert "start_timecode" in scene and "end_timecode" in scene
+    assert os.path.exists(result.meta["scenes_path"])
+    with open(result.meta["scenes_path"], encoding="utf-8") as handle:
+        assert isinstance(json.load(handle), list)
+
+
+def test_color_grade_produces_a_real_file(sample_video, tmp_path, monkeypatch):
+    from app.media.lut import write_lut
+    from app.stages import color_grade
+
+    lut = write_lut("cinematic_warm", str(tmp_path / "look.cube"), size=9)
+    result = color_grade.run(str(sample_video), str(tmp_path), {"lut": lut})
+    assert os.path.exists(result.output_uri)
+    assert os.path.getsize(result.output_uri) > 0
+    graded = probe(result.output_uri)
+    assert graded.has_video
+    assert graded.duration_s == pytest.approx(6.0, abs=0.5)
+    assert result.meta["applied"] is True
+    assert len(result.meta["lut_fingerprint"]["sha256"]) == 64
+
+
+def test_deliver_creates_a_valid_master(sample_video, tmp_path):
+    from app.stages import deliver
+
+    result = deliver.run(str(sample_video), str(tmp_path), {"master_crf": 26})
+    master = result.meta["master"]
+    assert os.path.exists(master)
+    info = probe(master)
+    assert info.has_video and info.has_audio
+    assert info.video_codec == "h264"
+    assert info.audio_codec == "aac"
+    assert info.pix_fmt == "yuv420p"
+    assert info.duration_s == pytest.approx(6.0, abs=0.5)
+    assert os.path.exists(result.meta["proxy"])
+    assert os.path.exists(result.meta["poster"])
+
+
+def test_full_pipeline_produces_outputs(sample_video, tmp_path):
+    settings = _settings(tmp_path)
     manifest = run_job(
         JobRequest(
-            input_uri=clip,
+            input_uri=str(_inside_workdir(settings, sample_video)),
             stages=["audio_cleanup", "scene_detect", "color_grade", "deliver"],
-            options={"lut": "cinematic_warm", "look_strength": 0.8},
-            output_dir=str(tmp_path),
-        )
+            options={"lut": "cinematic_warm", "master_crf": 28},
+        ),
+        settings=settings,
     )
     assert manifest["status"] == "completed", manifest.get("error")
-    names = [s["stage"] for s in manifest["stages"]]
-    assert names == ["audio_cleanup", "scene_detect", "color_grade", "deliver"]
-    master = manifest["artifacts"]["master"]
-    assert os.path.exists(master) and os.path.getsize(master) > 0
-    assert os.path.exists(manifest["artifacts"]["proxy"])
-    assert os.path.exists(manifest["artifacts"]["poster"])
-    saved = json.load(open(manifest["manifest_path"], encoding="utf-8"))
-    assert saved["job_id"] == manifest["job_id"]
-    assert saved["status"] == "completed"
+    stages = {entry["stage"]: entry for entry in manifest["stages"]}
+    assert stages["audio_cleanup"]["status"] == "completed"
+    assert stages["scene_detect"]["status"] == "completed"
+    assert stages["color_grade"]["status"] == "completed"
+    assert stages["deliver"]["status"] == "completed"
+    assert manifest["outputs"]
+    kinds = {output["kind"] for output in manifest["outputs"]}
+    assert {"master", "proxy", "poster"} <= kinds
+    master = next(o for o in manifest["outputs"] if o["kind"] == "master")
+    assert master["sha256"]
+    assert master["width"] == 320
+    assert os.path.exists(master["path"])
 
 
-def test_unknown_stage_is_rejected(clip):
-    with pytest.raises(ValueError):
-        run_job(JobRequest(input_uri=clip, stages=["audio_cleanup", "nonsense"]))
-
-
-def test_audio_auto_falls_back_without_deepfilternet(clip, tmp_path, monkeypatch):
-    import framefrog.stages.audio as audio_stage
-
-    monkeypatch.setattr(audio_stage, "deepfilternet_available", lambda: False)
+def test_pipeline_records_input_metadata(sample_video, tmp_path):
+    settings = _settings(tmp_path)
     manifest = run_job(
-        JobRequest(
-            input_uri=clip,
-            stages=["audio_cleanup"],
-            options={"denoise_model": "auto"},
-            output_dir=str(tmp_path),
-        )
+        JobRequest(input_uri=str(_inside_workdir(settings, sample_video)), stages=["scene_detect"]),
+        settings=settings,
     )
     assert manifest["status"] == "completed"
-    meta = manifest["stages"][0]["meta"]
-    assert meta["denoise_model"] == "ffmpeg"
-    assert meta["fallback_reason"] == "deepfilternet not installed"
+    assert manifest["input"]["width"] == 320
+    assert manifest["input"]["height"] == 180
+    assert manifest["input"]["fps"] == pytest.approx(30.0, abs=0.1)
+    assert manifest["input"]["has_audio"] is True
+    assert manifest["gpu_validation_status"] == "pending"
 
 
-def test_audio_explicit_deepfilternet_fails_loudly(clip, tmp_path, monkeypatch):
-    import framefrog.stages.audio as audio_stage
-
-    monkeypatch.setattr(audio_stage, "deepfilternet_available", lambda: False)
+def test_pipeline_rejects_an_invalid_input(tmp_path):
+    settings = _settings(tmp_path)
+    settings.work_dir.mkdir(parents=True, exist_ok=True)
+    broken = settings.work_dir / "broken.mp4"
+    broken.write_bytes(b"this is not a video")
     manifest = run_job(
-        JobRequest(
-            input_uri=clip,
-            stages=["audio_cleanup"],
-            options={"denoise_model": "deepfilternet"},
-            output_dir=str(tmp_path),
-        )
+        JobRequest(input_uri=str(broken), stages=["scene_detect"]),
+        settings=settings,
     )
     assert manifest["status"] == "failed"
-    assert "deepfilternet" in manifest["error"]
+    assert manifest["error"]["code"] == "media_validation_error"
 
 
-# --------------------------------------------------------------------------- #
-# RIFE — only runs where the graph and onnxruntime are actually present
-# --------------------------------------------------------------------------- #
-@pytest.fixture(scope="module")
-def short_clip(tmp_path_factory):
-    out = str(tmp_path_factory.mktemp("short") / "short.mp4")
-    subprocess.run([
-        "ffmpeg", "-y",
-        "-f", "lavfi", "-i", "testsrc2=size=160x96:rate=12:duration=0.5",
-        "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=0.5",
-        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-shortest", out,
-    ], check=True, capture_output=True)
-    return out
+def test_media_validation_rejects_oversized_files(sample_video, tmp_path):
+    from app.core.errors import MediaValidationError
+
+    settings = _settings(tmp_path)
+    settings.max_upload_bytes = 10
+    with pytest.raises(MediaValidationError):
+        validation.validate_media_file(sample_video, settings)
 
 
-@pytest.mark.skipif(
-    not (ffmpeg.has_ffmpeg()), reason="ffmpeg not installed"
-)
-def test_rife_interpolation(short_clip, tmp_path):
-    from framefrog.models import find_rife_model, onnxruntime_available
+def test_media_validation_rejects_long_videos(sample_video, tmp_path):
+    from app.core.errors import MediaValidationError
 
-    if not (find_rife_model() and onnxruntime_available()):
-        pytest.skip("RIFE graph or onnxruntime not available")
-
-    manifest = run_job(
-        JobRequest(
-            input_uri=short_clip,
-            stages=["interpolate"],
-            options={"interp_model": "rife", "target_fps": 24, "rife_provider": "cpu"},
-            output_dir=str(tmp_path),
-        )
-    )
-    assert manifest["status"] == "completed", manifest.get("error")
-    meta = manifest["stages"][0]["meta"]
-    assert "RIFE" in meta["interp_model"]
-    assert meta["provider"] == "CPUExecutionProvider"
-    assert abs(meta["output_fps"] - 24) < 0.5
-    assert os.path.exists(manifest["final_output"])
+    settings = _settings(tmp_path)
+    settings.max_video_duration_seconds = 1.0
+    with pytest.raises(MediaValidationError):
+        validation.validate_media_file(sample_video, settings)
 
 
-def test_webhook_secret_is_redacted_in_manifest():
-    from framefrog.pipeline import _public_options
+def test_media_validation_rejects_high_resolution(sample_video, tmp_path):
+    from app.core.errors import MediaValidationError
 
-    clean = _public_options({"webhook_secret": "s3cret", "lut": "neutral_film"})
-    assert clean == {"webhook_secret": "***", "lut": "neutral_film"}
+    settings = _settings(tmp_path)
+    settings.max_video_width = 100
+    with pytest.raises(MediaValidationError):
+        validation.validate_media_file(sample_video, settings)
+
+
+def test_media_validation_rejects_empty_files(tmp_path):
+    from app.core.errors import MediaValidationError
+
+    settings = _settings(tmp_path)
+    empty = tmp_path / "empty.mp4"
+    empty.write_bytes(b"")
+    with pytest.raises(MediaValidationError):
+        validation.validate_media_file(empty, settings)

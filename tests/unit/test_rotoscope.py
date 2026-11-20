@@ -5,9 +5,8 @@
 
 import pytest
 
-from framefrog.stages import STAGE_NAMES
-from framefrog.stages import rotoscope
-from framefrog.types import DEFAULT_STAGES
+from app.jobs.models import DEFAULT_STAGES
+from app.stages import STAGE_NAMES, rotoscope
 
 
 def test_gpu_stages_are_opt_in():

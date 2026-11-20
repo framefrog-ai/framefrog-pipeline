@@ -3,8 +3,6 @@
 
 """Scene detection on a synthetic hard cut — pure OpenCV, no FFmpeg needed."""
 
-import os
-
 import numpy as np
 import pytest
 
@@ -22,11 +20,11 @@ def _write_cut_clip(path: str) -> None:
 
 
 def test_detects_single_cut(tmp_path):
-    from framefrog.stages.scenes import _detect_opencv
+    from app.stages.scene_detect import _detect_opencv
 
     clip = str(tmp_path / "cut.avi")
     _write_cut_clip(clip)
-    scenes = _detect_opencv(clip, threshold=0.35, min_len=0.5, duration=3.0)
+    scenes = _detect_opencv(clip, threshold=0.35, min_len=0.5, duration=3.0, fps=10)
     assert len(scenes) == 2, scenes
     cut = scenes[1]["start_s"]
     assert 1.2 <= cut <= 1.8, f"cut at {cut}s, expected ~1.5s"

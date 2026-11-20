@@ -5,7 +5,7 @@
 
 import json
 
-from framefrog import gpu_check
+from app import gpu_check
 
 
 def test_probe_runs_and_skips_unrequested_models(capsys):
@@ -19,9 +19,7 @@ def test_probe_runs_and_skips_unrequested_models(capsys):
 
 
 def test_a_failed_check_fails_the_command(monkeypatch):
-    monkeypatch.setattr(
-        gpu_check, "_check_encode", lambda encoder: {"status": "failed", "error": "boom"}
-    )
+    monkeypatch.setattr(gpu_check, "_check_encode", lambda encoder: {"status": "failed", "error": "boom"})
     assert gpu_check.main(["--json"]) == 1
 
 

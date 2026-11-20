@@ -7,8 +7,8 @@ import subprocess
 
 import pytest
 
-from framefrog import ffmpeg
-from framefrog.stages import upscale
+from app.media import ffmpeg
+from app.stages import upscale
 
 pytestmark = pytest.mark.skipif(not ffmpeg.has_ffmpeg(), reason="ffmpeg not installed")
 
@@ -16,13 +16,32 @@ pytestmark = pytest.mark.skipif(not ffmpeg.has_ffmpeg(), reason="ffmpeg not inst
 @pytest.fixture(scope="module")
 def clip(tmp_path_factory):
     out = str(tmp_path_factory.mktemp("up") / "src.mp4")
-    subprocess.run([
-        "ffmpeg", "-y",
-        "-f", "lavfi", "-i", "testsrc2=size=160x96:rate=12:duration=1",
-        "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=1",
-        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-shortest", out,
-    ], check=True, capture_output=True)
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=160x96:rate=12:duration=1",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000:duration=1",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-shortest",
+            out,
+        ],
+        check=True,
+        capture_output=True,
+    )
     return out
 
 
@@ -67,6 +86,4 @@ def test_realesrgan_requires_weights(clip, tmp_path):
 
 def test_unknown_backend_is_rejected(clip, tmp_path):
     with pytest.raises(ValueError):
-        upscale.run(
-            clip, str(tmp_path), {"target_height": 108, "upscale_backend": "waifu"}
-        )
+        upscale.run(clip, str(tmp_path), {"target_height": 108, "upscale_backend": "waifu"})

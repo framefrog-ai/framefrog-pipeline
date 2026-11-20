@@ -5,7 +5,7 @@
 
 import os
 
-from framefrog.lut import (
+from app.media.lut import (
     BUILTIN_LOOKS,
     LUT_SIZE,
     ensure_lut,
@@ -21,7 +21,7 @@ def test_generates_every_builtin(tmp_path):
         assert os.path.exists(path)
         with open(path, encoding="utf-8") as fh:
             lines = [ln for ln in fh.read().splitlines() if ln and not ln[0].isalpha()]
-        assert len(lines) == LUT_SIZE ** 3, f"{name}: {len(lines)} entries"
+        assert len(lines) == LUT_SIZE**3, f"{name}: {len(lines)} entries"
 
 
 def test_ensure_lut_reuses_existing(tmp_path, monkeypatch):

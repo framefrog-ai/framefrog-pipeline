@@ -7,7 +7,7 @@ import os
 
 import pytest
 
-from framefrog.queue import FileQueue, QueueError, open_queue
+from app.jobs.queue import FileQueue, QueueError, open_queue
 
 
 def test_roundtrip(tmp_path):

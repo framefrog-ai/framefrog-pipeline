@@ -3,15 +3,12 @@
 
 """Model resolution and capability reporting — no runtimes required."""
 
-import os
-
-from framefrog.models import (
+from app.models.discovery import (
     find_rife_model,
     model_report,
-    onnxruntime_available,
     rife_available,
 )
-from framefrog.stages.interpolate import _provider
+from app.stages.interpolate import _provider
 
 
 def test_explicit_rife_path_wins(tmp_path):
@@ -29,7 +26,7 @@ def test_env_model_dir(tmp_path, monkeypatch):
 
 
 def test_no_model_available(monkeypatch, tmp_path):
-    import framefrog.models as models
+    import app.models.discovery as models
 
     monkeypatch.setattr(models, "_model_dirs", lambda: [str(tmp_path)])
     monkeypatch.setenv("FRAMEFROG_RIFE_ONNX", str(tmp_path / "missing.onnx"))
