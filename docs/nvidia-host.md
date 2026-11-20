@@ -49,7 +49,7 @@ with `--enable-nvenc --enable-nvdec` and the NVIDIA codec headers.
 Verify what the pipeline will choose:
 
 ```bash
-python -c "from framefrog import ffmpeg; print(ffmpeg.choose_encoder({}))"
+python -c "from app.media import ffmpeg; print(ffmpeg.choose_encoder({}))"
 # h264_nvenc on a working host, libx264 otherwise
 ```
 
@@ -143,7 +143,7 @@ python main.py --input rushes/spot.mov --stages upscale,deliver \
 ## 6. Verify before a real job
 
 ```bash
-python -m framefrog.gpu_check --all
+python -m app.gpu_check --all
 ```
 
 Expected shape of a healthy output:
@@ -166,7 +166,7 @@ with the model checks skipped; pass the weights flags explicitly to require them
 If you only want to test SAM 2, pass its checkpoint alone:
 
 ```bash
-python -m framefrog.gpu_check \
+python -m app.gpu_check \
   --sam2-checkpoint assets/models/sam2.1_hiera_small.pt \
   --sam2-config /path/to/sam2/configs/sam2.1/sam2.1_hiera_small.yaml
 ```
@@ -209,4 +209,4 @@ engine, the rotoscope seed/coverage, and per-shot timings.
   baking engines into the image.
 - Cerebrium/other serverless GPUs: the same steps apply inside the build; model
   weights and engines are best fetched at build time or mounted from storage.
-  `python -m framefrog.gpu_check --all` makes a good health probe in the image.
+  `python -m app.gpu_check --all` makes a good health probe in the image.

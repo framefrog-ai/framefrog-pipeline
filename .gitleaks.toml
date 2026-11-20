@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 FrameFrog
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+# Gitleaks configuration.
+#
+# The default rules are used unchanged; only the repository's own example
+# configuration is allowlisted. `.env.example` contains the *names* of the
+# settings with empty values — that is documentation, not a credential, and
+# the generic-api-key rule matches the name alone.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Example configuration files hold setting names, never values"
+paths = [
+  '''(^|/)assets/sample/''',
+  '''(^|/)\.env\.example$''',
+  '''(^|/)work/''',
+  '''(^|/)outputs/''',
+]

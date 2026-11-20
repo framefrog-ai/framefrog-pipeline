@@ -1,0 +1,60 @@
+name: GPU validation
+
+# Manual only: the GPU tests need a CUDA host and the RIFE/DeepFilterNet
+# runtimes. The workflow has never been executed by this repository — it is
+# the harness that will be used once startup cloud credits provide a GPU.
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Label of the self-hosted GPU runner (e.g. gpu-l40s)"
+        required: true
+        default: gpu
+      target_fps:
+        description: "Interpolation target used by the smoke test"
+        required: false
+        default: "60"
+
+permissions:
+  contents: read
+
+jobs:
+  gpu:
+    name: CUDA smoke test
+    runs-on: [self-hosted, "${{ inputs.runner }}"]
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,models]"
+          pip install --index-url https://download.pytorch.org/whl/cu121 torch torchvision
+
+      - name: Fetch model weights
+        env:
+          MODEL_CACHE_DIR: ${{ github.workspace }}/models
+        run: python scripts/download_models.py
+
+      - name: Report the environment
+        run: python scripts/check_environment.py --json
+
+      - name: GPU smoke test
+        run: python scripts/gpu_smoke_test.py --target-fps "${{ inputs.target_fps }}"
+
+      - name: GPU-marked tests
+        env:
+          MODEL_CACHE_DIR: ${{ github.workspace }}/models
+        run: python -m pytest -m gpu -v

@@ -1,18 +1,59 @@
-# FrameFrog pipeline — serverless GPU deployment config.
-# Cerebrium's config schema changes between CLI releases; verify against
-# https://docs.cerebrium.ai/ before deploying, then run:
-#   cerebrium deploy
+# FrameFrog pipeline — serverless GPU deployment configuration.
 #
-# Two deployment shapes work:
-#   * HTTP API     entrypoint = "framefrog.api:app"      (FastAPI)
-#   * job worker   entrypoint = "main:post_production"   (function)
+# STATUS: CONFIGURED_PENDING_CLOUD_VALIDATION
+#
+# This file has NOT been deployed from this repository and has not been
+# verified against the live Cerebrium platform. Cerebrium's configuration
+# schema changes between CLI releases: check https://docs.cerebrium.ai/ before
+# deploying and adjust the section names to your installed `cerebrium` CLI.
+#
+#   cerebrium deploy                 # deploy the HTTP surface
+#   cerebrium logs <deployment-id>   # inspect a deployment
+#
+# Two entry points are configured below:
+#   * HTTP API     entrypoint = "app.main:app"   (FastAPI, uvicorn)
+#   * job worker   entrypoint = "main:post_production" (single-shot function)
 
 [cerebrium.deployment]
 name = "framefrog-pipeline"
 python_version = "3.11"
-entrypoint = "main:post_production"
+# The FastAPI application is the deployment surface: it accepts jobs, tracks
+# them in SQLite and runs them in-process.
+entrypoint = "app.main:app"
 webhook = true
+# Scale to zero: an idle deployment must not burn GPU credits.
+scale_to_zero = true
+# Concurrency: one GPU per instance, one job at a time.
+concurrency = 1
+timeout = 3600
+# GPU selection — change to match the instance type that cloud credits can
+# actually provision.
+hardware = "gpu"
+gpu_type = "L40S"
+gpu_count = 1
+# Model cache: weights are downloaded once per cold start.
+model_cache_path = "/app/models"
 
-[build]
+[cerebrium.build]
 requirements = "requirements.txt"
-system_packages = ["ffmpeg"]
+system_packages = ["ffmpeg", "libgl1", "libglib2.0-0"]
+# The RIFE graph is fetched at build time so a cold start does not wait for
+# a 21 MB download.
+pre_build = ["python scripts/download_models.py"]
+
+[cerebrium.environment]
+APP_ENV = "production"
+LOG_LEVEL = "INFO"
+STORAGE_BACKEND = "s3"
+S3_REGION = "auto"
+S3_BUCKET = "${S3_BUCKET}"
+S3_ENDPOINT_URL = "${S3_ENDPOINT_URL}"
+S3_ACCESS_KEY_ID = "${S3_ACCESS_KEY_ID}"
+S3_SECRET_ACCESS_KEY = "${S3_SECRET_ACCESS_KEY}"
+WORK_DIR = "/app/work"
+DATABASE_URL = "sqlite:////app/work/framefrog.db"
+MODEL_CACHE_DIR = "/app/models"
+COMPUTE_DEVICE = "cuda"
+# Secrets are injected by the platform — never commit real values here.
+API_KEY = "${API_KEY}"
+GPU_VALIDATION_REQUIRED = "true"

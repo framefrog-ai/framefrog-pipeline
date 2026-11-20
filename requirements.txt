@@ -1,16 +1,18 @@
-# FrameFrog pipeline — runtime dependencies.
+# FrameFrog — base runtime dependencies for platforms that install from
+# requirements files (Cerebrium). The source of truth is pyproject.toml:
+#
+#   pip install -e ".[dev,models,audio,gpu]"
+#
 # FFmpeg/FFprobe are system binaries, not pip packages:
 #   apt-get install ffmpeg     (Debian/Ubuntu)
 #   brew install ffmpeg        (macOS)
 
-numpy>=1.26
-opencv-python-headless>=4.9
-scenedetect[opencv]>=0.6.4
-boto3>=1.34          # only needed for s3:// inputs and outputs
 fastapi>=0.110
 uvicorn[standard]>=0.29
+pydantic>=2.6
+pydantic-settings>=2.2
+numpy>=1.26
+opencv-python-headless>=4.9
+scenedetect>=0.6.4
+boto3>=1.34
 python-multipart>=0.0.9
-
-# dev
-pytest>=8.0
-httpx>=0.27

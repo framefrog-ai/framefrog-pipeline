@@ -34,7 +34,9 @@ def _python_files() -> list:
     try:
         out = subprocess.run(
             ["git", "-C", ROOT, "ls-files", "*.py"],
-            check=True, capture_output=True, text=True,
+            check=True,
+            capture_output=True,
+            text=True,
         ).stdout
         files = [os.path.join(ROOT, line) for line in out.splitlines() if line]
         if files:
@@ -54,7 +56,8 @@ def check_license() -> dict:
     path = os.path.join(ROOT, "LICENSE")
     if not os.path.exists(path):
         return {"ok": False, "error": "LICENSE missing"}
-    text = open(path, encoding="utf-8", errors="replace").read()
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        text = handle.read()
     ok = (
         "GNU AFFERO GENERAL PUBLIC LICENSE" in text
         and "Version 3, 19 November 2007" in text
@@ -65,7 +68,8 @@ def check_license() -> dict:
 
 def check_file(path: str) -> list:
     problems = []
-    lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        lines = handle.read().splitlines()
     if not lines:
         return ["empty file"]
     shebang = next((i for i, line in enumerate(lines[:6]) if line.startswith("#!")), None)
@@ -83,7 +87,8 @@ def check_readme() -> dict:
     path = os.path.join(ROOT, "README.md")
     if not os.path.exists(path):
         return {"ok": False, "error": "README.md missing"}
-    text = open(path, encoding="utf-8", errors="replace").read()
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        text = handle.read()
     return {"ok": "AGPL-3.0" in text, "mentions_license": "AGPL-3.0" in text}
 
 
@@ -103,18 +108,16 @@ def main(argv=None) -> int:
         "files_missing_headers": failures,
         "ok": False,
     }
-    report["ok"] = (
-        report["license"].get("ok", False)
-        and report["readme"].get("ok", False)
-        and not failures
-    )
+    report["ok"] = report["license"].get("ok", False) and report["readme"].get("ok", False) and not failures
 
     if args.json:
         print(json.dumps(report, indent=2))
     else:
         lic = report["license"]
-        print(f"LICENSE      {'ok' if lic.get('ok') else 'FAIL'} "
-              f"({lic.get('spdx') or lic.get('error')}, {lic.get('bytes', 0)} bytes)")
+        print(
+            f"LICENSE      {'ok' if lic.get('ok') else 'FAIL'} "
+            f"({lic.get('spdx') or lic.get('error')}, {lic.get('bytes', 0)} bytes)"
+        )
         print(f"README       {'ok' if report['readme'].get('ok') else 'FAIL'} (mentions AGPL-3.0)")
         print(f"Python files {report['python_files']} checked")
         if failures:
