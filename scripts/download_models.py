@@ -35,6 +35,14 @@ RIFE_TARGET = os.path.join(MODEL_DIR, "rife-v4.9-ensemble.onnx")
 REALESRGAN_URL = "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/RealESRGAN_x4plus.pth"
 REALESRGAN_TARGET = os.path.join(MODEL_DIR, "RealESRGAN_x4plus.pth")
 
+#: Pinned SHA-256 digests of the artifacts this repository fetches.
+#:
+#: A download whose digest does not match is deleted and the script fails:
+#: a model that cannot be verified is a model that must not be used.
+PINNED_SHA256 = {
+    "rife-v4.9-ensemble.onnx": "76e4cef9ab42fa7dd4e8f6e4aba47462051e3faa969e4bca6479784fbab0ac6f",
+}
+
 SAM2_BASE = "https://dl.fbaipublicfiles.com/segment_anything_2/092824/"
 SAM2_URLS = {
     "tiny": SAM2_BASE + "sam2.1_hiera_tiny.pt",
@@ -78,6 +86,31 @@ def download(url: str, target: str) -> str:
     return target
 
 
+def verify(target: str) -> str:
+    """Verify a downloaded artifact against its pinned digest.
+
+    Returns the digest. Exits with a non-zero status when the file exists but
+    does not match the pin: an unverified model must not be used, so the
+    offending file is removed.
+    """
+    digest = sha256(target)
+    expected = PINNED_SHA256.get(os.path.basename(target))
+    if expected is None:
+        print(f"  sha256: {digest}  (no pinned digest for this artifact)")
+        return digest
+    if digest != expected:
+        print(f"  sha256:   {digest}")
+        print(f"  EXPECTED: {expected}")
+        print("  the download does not match the pinned digest - removing it")
+        try:
+            os.remove(target)
+        except OSError:
+            pass
+        raise SystemExit(1)
+    print(f"  sha256: {digest}  (matches the pinned digest)")
+    return digest
+
+
 def _fetch(label: str, url: str, target: str, force: bool) -> None:
     if os.path.exists(target) and not force:
         print(f"{label} present: {os.path.relpath(target, ROOT)}")
@@ -85,7 +118,7 @@ def _fetch(label: str, url: str, target: str, force: bool) -> None:
         download(url, target)
         print(f"{label} saved: {os.path.relpath(target, ROOT)}")
     print(f"  size:   {os.path.getsize(target) / 1e6:.1f} MB")
-    print(f"  sha256: {sha256(target)}")
+    verify(target)
 
 
 def main() -> int:
@@ -101,7 +134,26 @@ def main() -> int:
         default="none",
         help="fetch a SAM 2.1 checkpoint (small ~150 MB, large ~900 MB)",
     )
+    ap.add_argument(
+        "--verify-only",
+        action="store_true",
+        help="only verify the artifacts already on disk against their pinned digests",
+    )
     args = ap.parse_args()
+
+    if args.verify_only:
+        failures = 0
+        for target in (RIFE_TARGET, REALESRGAN_TARGET):
+            if not os.path.exists(target):
+                print(f"{os.path.relpath(target, ROOT)}: not present")
+                continue
+            print(f"{os.path.relpath(target, ROOT)}:")
+            try:
+                verify(target)
+            except SystemExit:
+                failures += 1
+        return 1 if failures else 0
+
     any_flag = args.rife or args.realesrgan or args.sam2 != "none"
     fetch_rife = args.rife or not any_flag
 

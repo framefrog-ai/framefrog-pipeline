@@ -33,6 +33,53 @@ from app.storage.base import storage_from_settings
 log = get_logger("api")
 
 
+def initialise_runtime(app: FastAPI, settings: Settings, repository: JobRepository | None = None) -> None:
+    """Attach the job store, the storage backend and the runner to an app.
+
+    The lifespan handler calls this; tests that drive the app through an ASGI
+    transport call it directly, because a transport does not run the lifespan.
+    """
+    app.state.started_at = time.time()
+    app.state.settings = settings
+    repo = repository or repository_from_settings(settings)
+    app.state.repository = repo
+    storage = storage_from_settings(settings)
+    app.state.storage = storage
+    runner = JobRunner(repo, settings=settings, storage=storage)
+    runner.start()
+    app.state.runner = runner
+    log_event(
+        log,
+        "app_started",
+        app_env=settings.app_env,
+        storage_backend=settings.storage_backend,
+        max_workers=runner.max_workers,
+    )
+
+
+def shutdown_runtime(app: FastAPI) -> None:
+    """Stop the runner and close the job store.
+
+    A job that is still executing keeps the store open: closing it under the
+    job would turn a graceful shutdown into a "database is closed" error.
+    SQLite has already committed every write, so the remaining state is safe.
+    """
+    runner = getattr(app.state, "runner", None)
+    if runner is not None:
+        runner.shutdown(wait=False)
+    repository = getattr(app.state, "repository", None)
+    if repository is not None:
+        if runner is not None and runner.running_jobs:
+            log_event(
+                log,
+                "app_stopped",
+                note="a job is still running; the job store stays open",
+            )
+            return
+        repository.close()
+    log_event(log, "app_stopped")
+
+
 def create_app(settings: Settings | None = None, repository: JobRepository | None = None) -> FastAPI:
     """Build the application.
 
@@ -44,28 +91,11 @@ def create_app(settings: Settings | None = None, repository: JobRepository | Non
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        app.state.started_at = time.time()
-        app.state.settings = settings
-        repo = repository or repository_from_settings(settings)
-        app.state.repository = repo
-        storage = storage_from_settings(settings)
-        app.state.storage = storage
-        runner = JobRunner(repo, settings=settings, storage=storage)
-        runner.start()
-        app.state.runner = runner
-        log_event(
-            log,
-            "app_started",
-            app_env=settings.app_env,
-            storage_backend=settings.storage_backend,
-            max_workers=runner.max_workers,
-        )
+        initialise_runtime(app, settings, repository)
         try:
             yield
         finally:
-            runner.shutdown(wait=False)
-            repo.close()
-            log_event(log, "app_stopped")
+            shutdown_runtime(app)
 
     app = FastAPI(
         title="FrameFrog Pipeline API",

@@ -14,6 +14,7 @@ changing the API.
 
 from __future__ import annotations
 
+import sqlite3
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -75,6 +76,12 @@ class JobRunner:
         """Number of jobs submitted but not finished."""
         with self._lock:
             return sum(1 for fut in self._futures.values() if not fut.done())
+
+    @property
+    def running_jobs(self) -> int:
+        """Jobs that are still executing (not merely queued)."""
+        with self._lock:
+            return sum(1 for fut in self._futures.values() if fut.running())
 
     # -- submission ----------------------------------------------------------- #
     def submit(self, record: JobRecord) -> Future:
@@ -168,6 +175,10 @@ class JobRunner:
             if current.started_at is None:
                 current.started_at = utc_now()
             self.repository.save(current)
+        except sqlite3.ProgrammingError:
+            # The store was closed during shutdown: the job result is still
+            # written to the manifest file.
+            return
         except Exception as exc:  # pragma: no cover - never fail a job on bookkeeping
             log.warning(
                 "progress_persist_failed",

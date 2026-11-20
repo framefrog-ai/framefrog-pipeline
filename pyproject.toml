@@ -111,6 +111,8 @@ markers = [
   "gpu: requires a CUDA GPU; skipped automatically when CUDA is unavailable",
   "integration: exercises the application end to end (FFmpeg, HTTP, storage)",
 ]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
 filterwarnings = [
   "ignore::DeprecationWarning:scenedetect.*",
 ]

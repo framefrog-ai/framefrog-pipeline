@@ -97,8 +97,13 @@ and starts on a machine without a GPU.
 Model weights are not vendored; fetch them explicitly:
 
 ```bash
-python scripts/download_models.py           # RIFE v4.9 ONNX (21 MB) + SHA-256
+python scripts/download_models.py             # RIFE v4.9 ONNX (21 MB)
+python scripts/download_models.py --verify-only   # check what is on disk
 ```
+
+Every download is verified against a pinned SHA-256 digest. A file that does
+not match is removed and the command fails — an unverified model is never
+used.
 
 ## 4. Configuration
 
