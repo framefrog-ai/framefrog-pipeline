@@ -27,6 +27,7 @@ produced by a command in this repository.
 | Application startup (`app.main:create_app`, `uvicorn app.main:app`) | IMPLEMENTED_AND_CPU_TESTED | `tests/integration/test_api.py` | CPU | none | In-process runner only; a queue consumer replaces it later | `pytest tests/integration/test_api.py -v` |
 | Typed configuration (`app/core/config.py`, pydantic-settings) | IMPLEMENTED_AND_CPU_TESTED | `tests/unit/test_config.py` | CPU | none | PostgreSQL URL accepted but not implemented | `pytest tests/unit/test_config.py -v` |
 | Startup configuration validation | IMPLEMENTED_AND_CPU_TESTED | `tests/unit/test_config.py` | CPU | none | — | `python scripts/check_environment.py` |
+| API reference (`docs/API.md`) | IMPLEMENTED_AND_CPU_TESTED | reviewed against `app/api/schemas.py` and the routes | CPU | none | — | `uvicorn app.main:app` and open `/docs` |
 | Versioned API (`/v1/jobs`, `/v1/jobs/{id}`, `/v1/jobs/{id}/cancel`, `/v1/jobs/{id}/outputs`) | IMPLEMENTED_AND_CPU_TESTED | `tests/integration/test_api.py` | CPU | none | No pagination/filtering yet | `pytest tests/integration/test_api.py -v` |
 | Liveness / readiness (`/health`, `/ready`) | IMPLEMENTED_AND_CPU_TESTED | `tests/integration/test_api.py` | CPU | none | `/ready` does not probe the model runtimes | `curl localhost:8080/ready` |
 | Request/response schemas with validation | IMPLEMENTED_AND_CPU_TESTED | `tests/unit/test_schemas.py` | CPU | none | Partial LUT intensity is rejected rather than implemented | `pytest tests/unit/test_schemas.py -v` |

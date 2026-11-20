@@ -10,6 +10,7 @@
 
 - **Product site:** <https://framefrog.me>
 - **Status of every feature:** [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md)
+- **API reference:** [docs/API.md](./docs/API.md)
 - **Architecture:** [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)
 - **GPU validation plan:** [docs/GPU_VALIDATION.md](./docs/GPU_VALIDATION.md)
 - **Security model:** [SECURITY.md](./SECURITY.md)

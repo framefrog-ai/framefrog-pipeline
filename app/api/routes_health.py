@@ -76,6 +76,20 @@ def ready(request: Request, response: Response) -> ReadyResponse:
         "queued": runner.queue_size() if hasattr(runner, "queue_size") else 0,
     }
 
+    # The optional model runtimes are reported but never decide readiness:
+    # the pipeline has documented fallbacks for every one of them.
+    from app.models.discovery import model_report
+
+    models: dict[str, Any] = model_report()
+    checks["models"] = {
+        "ok": True,
+        "deepfilternet": bool(models["deepfilternet"]["available"]),
+        "onnxruntime": bool(models["rife"]["onnxruntime"]),
+        "rife_model": models["rife"]["model"],
+        "rife_available": bool(models["rife"]["available"]),
+    }
+    checks["gpu"] = {"ok": True, "available": capabilities.cuda_available()}
+
     ok = all(bool(check.get("ok")) for check in checks.values())
     if not ok:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
