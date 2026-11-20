@@ -1,454 +1,316 @@
-# FrameFrog Pipeline
+# FrameFrog pipeline
 
-[![CI](https://github.com/framefrog-ai/framefrog-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/framefrog-ai/framefrog-pipeline/actions/workflows/ci.yml)
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+> **FrameFrog** — an AI-native cloud video post-production pipeline.
+> Scene detection, neural audio cleanup, 3D LUT grading, RIFE frame
+> interpolation and MP4 delivery, orchestrated behind one FastAPI service and
+> a persistent job queue.
 
-> **FrameFrog** — AI cloud video post-production, as a pipeline you can actually run.
->
-> Audio cleanup → scene detection → 3D LUT grade → frame interpolation → delivery,
-> orchestrated per job on serverless GPUs. FFmpeg does the heavy lifting; every
-> step is a stateless function with a typed contract.
+[![CI](https://img.shields.io/github/actions/workflow/status/framefrog-ai/framefrog-pipeline/ci.yml?branch=main&label=CI&logo=github&logoColor=10B981&labelColor=0D1117&color=10B981)](https://github.com/framefrog-ai/framefrog-pipeline/actions/workflows/ci.yml)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-10B981?style=for-the-badge&labelColor=0D1117)](./LICENSE)
 
-This is the working backend behind [framefrog.me](https://framefrog.me). Clone it,
-run `python demo.py`, and you get a graded, interpolated, delivery-ready master
-plus a proxy, a poster frame and a manifest — no footage or models required.
+- **Product site:** <https://framefrog.me>
+- **Status of every feature:** [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md)
+- **Architecture:** [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)
+- **GPU validation plan:** [docs/GPU_VALIDATION.md](./docs/GPU_VALIDATION.md)
+- **Security model:** [SECURITY.md](./SECURITY.md)
 
 ---
 
-## Quickstart
+## 1. Scope
+
+FrameFrog takes rushes and returns broadcast-ready masters through a chain of
+independent, GPU-capable stages:
+
+```text
+NVDEC → DeepFilterNet3 → SAM 2 → 3D LUT → RIFE → Real-ESRGAN → NVENC
+decode   neural audio     mattes   look     frames   4K detail   hardware
+```
+
+Every stage is a stateless function over files. That is what lets the same
+code run as a local CLI, inside the FastAPI service, or as an isolated
+serverless GPU function.
+
+**This repository is a pre-MVP.** The CPU path is implemented and tested; the
+GPU path is implemented but has never been executed, because no CUDA device
+was available while it was written. Nothing in this repository claims a GPU,
+VRAM, benchmark or cost result that a command in this repository did not
+produce. See [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md).
+
+## 2. Architecture at a glance
+
+```text
+        POST /v1/jobs
+                │
+                ▼
+    ┌───────────────────────┐        ┌────────────────────┐
+    │  api/routes_jobs.py   │───────▶│ jobs/repository.py │  SQLite (WAL)
+    │  validated schemas    │        │  jobs + idempotency│
+    └───────────┬───────────┘        └─────────┬──────────┘
+                │ 202 Accepted                 │
+                ▼                              ▼
+    ┌───────────────────────────────────────────────────────┐
+    │ jobs/runner.py — bounded thread pool, cancellation     │
+    └───────────────┬───────────────────────────────────────┘
+                    ▼
+    ┌───────────────────────────────────────────────────────┐
+    │ jobs/pipeline.py — stage order, manifest, progress     │
+    └───┬───────────┬───────────┬───────────┬───────────────┘
+        ▼           ▼           ▼           ▼
+   scene_detect  audio_    color_grade   interpolate   deliver
+                 cleanup
+        │           │           │           │           │
+        └───────────┴───────────┴───────────┴───────────┘
+                            ▼
+                  media/ffmpeg.py · media/ffprobe.py
+                            ▼
+              storage/local.py  ·  storage/s3.py
+```
+
+- `app/core/` — configuration, errors, structured logging, security, capability probes
+- `app/api/` — HTTP schemas, dependencies and routes (`/health`, `/ready`, `/v1/jobs`)
+- `app/jobs/` — domain models, state machine, SQLite repository, background runner
+- `app/media/` — FFmpeg/FFprobe wrappers, LUT handling, media validation
+- `app/stages/` — the seven stage implementations
+- `app/storage/` — local filesystem and S3-compatible backends
+- `app/models/` — discovery of optional model runtimes and weights
+
+## 3. Installation
+
+Requirements: **Python 3.11+**, **FFmpeg and FFprobe** (`apt-get install ffmpeg`
+/ `brew install ffmpeg`).
 
 ```bash
-git clone https://github.com/framefrog-ai/framefrog-pipeline.git
+git clone git@github.com:framefrog-ai/framefrog-pipeline.git
 cd framefrog-pipeline
+
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt        # FFmpeg must be on PATH
-
-# optional model backends (see "Model backends" below)
-pip install onnxruntime deepfilternet
-python scripts/fetch_models.py         # RIFE v4.9 ONNX, 21 MB
-
-python demo.py                          # end-to-end; uses RIFE if the graph is present
-python main.py --input rushes.mov --lut cinematic_warm --target-fps 60
+pip install -e ".[dev]"          # runtime + test tooling
+pip install -e ".[models]"       # + ONNX Runtime (RIFE)
+pip install -e ".[audio]"        # + DeepFilterNet (pulls torch)
+pip install -e ".[gpu]"          # + CUDA torch / onnxruntime-gpu
 ```
 
-`demo.py` synthesises a 6-second, two-scene clip with an audio tone, then runs the
-full pipeline. Example output:
+Optional groups live in `pyproject.toml`: `audio`, `models`, `gpu`, `gpu-extra`,
+`dev`. The base install has **no CUDA dependency** — the application imports
+and starts on a machine without a GPU.
 
-```
-FrameFrog job fj_ab12cd34  [completed]
-  source   640x360 @ 30.0 fps · 6.0 s
-  audio_cleanup  ok     0.12s
-  scene_detect   ok     0.08s
-  color_grade    ok     0.35s
-  interpolate    ok     1.40s
-  deliver        ok     1.10s
-  master   …/05_master.mp4
-  proxy    …/05_proxy_720p.mp4
-  poster   …/05_poster.jpg
-  scenes   …/02_scenes.json
-  elapsed  3.1 s
+Model weights are not vendored; fetch them explicitly:
+
+```bash
+python scripts/download_models.py           # RIFE v4.9 ONNX (21 MB) + SHA-256
 ```
 
----
+## 4. Configuration
 
-## Stages
+Copy `.env.example` to `.env` and adjust. Every variable is read by
+`app/core/config.py`; the process validates them at startup and refuses to
+start on an invalid configuration.
 
-| Stage | What it does | Key options |
+| Variable | Default | Purpose |
 |---|---|---|
-| `audio_cleanup` | DeepFilterNet3 neural denoise, then −16 LUFS loudness; FFmpeg spectral denoise fallback. Picture stream-copied | `denoise_model`, `lufs`, `highpass`, `lowpass` |
-| `scene_detect` | shot boundaries via PySceneDetect, OpenCV histogram fallback | `scene_threshold`, `min_scene_s` |
-| `rotoscope` | SAM 2 object matte, automatic or prompted; picture unchanged | `sam2_checkpoint`, `rotoscope_mode`, `rotoscope_prompt` |
-| `color_grade` | applies a `.cube` look with `lut3d`, optional strength blend | `lut`, `look_strength` |
-| `interpolate` | RIFE v4.9 optical-flow interpolation (ONNX Runtime), 60/120 fps; FFmpeg `minterpolate` fallback | `interp_model`, `target_fps`, `rife_onnx`, `rife_provider`, `interp_quality` |
-| `upscale` | 4K via TensorRT / Real-ESRGAN / Lanczos; NVENC when available | `target_height`, `upscale_backend`, `upscale_engine`, `upscale_model` |
-| `deliver` | H.264/HEVC master, 720p proxy, poster frame, faststart | `master_crf`, `encoder` |
+| `APP_ENV` | `development` | `development` / `test` / `production` |
+| `LOG_LEVEL` | `INFO` | Log level for the JSON logger |
+| `API_KEY` | *(empty)* | Required in production; `X-API-Key` or `Authorization: Bearer` |
+| `WORK_DIR` | `./work` | Job working directory and SQLite location |
+| `DATABASE_URL` | `sqlite:///./work/framefrog.db` | Job store |
+| `STORAGE_BACKEND` | `local` | `local` or `s3` |
+| `MAX_UPLOAD_BYTES` | `2147483648` | Largest accepted input |
+| `MAX_VIDEO_DURATION_SECONDS` | `3600` | Longest accepted input |
+| `MAX_VIDEO_WIDTH` / `MAX_VIDEO_HEIGHT` | `3840` / `2160` | Largest accepted resolution |
+| `MAX_OUTPUT_FPS` | `60` | Highest accepted frame rate (and interpolation target) |
+| `MAX_CONCURRENT_JOBS` | `2` | Jobs running in parallel |
+| `FFMPEG_PATH` / `FFPROBE_PATH` | `ffmpeg` / `ffprobe` | Binary locations |
+| `S3_ENDPOINT_URL` | *(none)* | Custom endpoint (Cloudflare R2, MinIO) |
+| `S3_REGION` / `S3_BUCKET` | `us-east-1` / *(none)* | Object store |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | *(none)* | Object store credentials |
+| `S3_INPUT_PREFIX` / `S3_INTERMEDIATE_PREFIX` / `S3_OUTPUT_PREFIX` | `inputs` / `intermediate` / `outputs` | Key prefixes |
+| `PRESIGNED_URL_EXPIRY_SECONDS` | `900` | Signed URL lifetime |
+| `MODEL_CACHE_DIR` | `./models` | Where model weights are cached |
+| `DEEPFILTERNET_ENABLED` | `true` | Enable the neural audio adapter |
+| `RIFE_ENABLED` | `true` | Enable the interpolation adapter |
+| `RIFE_REPOSITORY_PATH` / `RIFE_MODEL_PATH` | *(none)* | Explicit model location |
+| `COMPUTE_DEVICE` | `auto` | `auto` / `cpu` / `cuda` |
+| `GPU_VALIDATION_REQUIRED` | `false` | Fail instead of falling back when a GPU stage is requested |
 
-### Model backends
+`APP_ENV=production` **requires** `API_KEY`; the process exits with a clear
+message otherwise.
 
-Both models are optional and both degrade gracefully:
-
-| Backend | Install | Used when |
-|---|---|---|
-| DeepFilterNet3 | `pip install deepfilternet` (torch) | `denoise_model=auto` and the package imports |
-| RIFE v4.9 | `python scripts/fetch_models.py` + `onnxruntime` | `interp_model=auto` and a graph is found |
-
-Resolution order for the RIFE graph: `options["rife_onnx"]` →
-`$FRAMEFROG_RIFE_ONNX` → `$FRAMEFROG_MODEL_DIR` → `assets/models/rife*.onnx`.
-ONNX Runtime picks CUDA when available, CPU otherwise (`rife_provider` can
-force either).
-
-Fallback semantics are explicit and recorded in the manifest:
-
-- `auto` (default) — try the model, fall back to FFmpeg, record
-  `fallback_reason`.
-- `rife` / `deepfilternet` — a hard requirement; the stage fails with install
-  instructions if the runtime is missing.
-- No hidden downloads. A job never pulls model weights mid-flight; fetching is
-  a separate, reproducible step.
-
-Model weights are not committed — `scripts/fetch_models.py` prints the SHA-256
-of the graph it writes, and the manifest records which graph and provider ran.
-
-### Per-shot fan-out
-
-When `scene_detect` has run, `color_grade` and `interpolate` can process each
-detected shot independently and stitch the results. This is off by default:
-
-```json
-{"fanout": "shots", "fanout_mode": "queue", "fanout_workers": 4}
-```
-
-| Option | Values | Meaning |
-|---|---|---|
-| `fanout` | `off` (default) / `auto` / `shots` | `auto` falls back to the monolithic stage and records `fanout_fallback_reason`; `shots` fails loudly |
-| `fanout_mode` | `inline` (default) / `queue` | bounded thread pool, or publish to a queue and consume |
-| `fanout_workers` | int | concurrent shot tasks (default ≤4) |
-| `queue_url` | `file://path` / `sqs://url` | queue backend; defaults to a file queue inside the job |
-| `queue_external` | bool | enqueue only and wait for a separate worker |
-| `fanout_timeout_s` | seconds | hard ceiling for result collection |
-
-How it works: shots are split at scene cuts (video only, re-encoded), each
-task calls the **same** `stage.run()` contract on its shot, results are
-collected in scene order, and the shot videos are concatenated. Audio is never
-fanned out — the original continuous track is muxed once at stitch time, so
-per-shot AAC priming cannot introduce seams. The stage manifest records
-`fanout`, backend, shot count, per-shot durations, cuts and the stitched
-duration.
-
-The file queue is claim-by-rename with lease recovery, so multiple worker
-processes on one host can share it. For a separate worker (another box, a GPU
-pod), run:
+## 5. Running it locally
 
 ```bash
-python -m framefrog.worker --queue-url file:///jobs/fj_x/fanout_color_grade/queue \
-    --results-dir /jobs/fj_x/fanout_color_grade/results --workers 4
+# API
+uvicorn app.main:app --host 0.0.0.0 --port 8080
+
+# one-shot CLI run over a local file
+python main.py --input ./rushes.mov --stages scene_detect,color_grade,deliver
+
+# end-to-end demo on generated footage (no input needed)
+python demo.py
 ```
 
-With `"queue_external": true` the orchestrator only publishes and waits for the
-result files, so both sides need shared storage. `sqs://` uses the same
-payloads and ack/nack semantics through boto3.
+Interactive API docs: <http://localhost:8080/docs>.
 
-### GPU pipeline: rotoscoping, 4K, NVENC
-
-`rotoscope` and `upscale` are opt-in stages (they are not in the default job), and
-every GPU path degrades or fails with instructions rather than pretending:
-
-```bash
-python main.py --input rushes/spot.mov \
-  --stages scene_detect,rotoscope,color_grade,interpolate,upscale,deliver \
-  --sam2-checkpoint assets/models/sam2.1_hiera_small.pt \
-  --target-height 2160 --encoder auto
-```
-
-**Encoder selection.** Every encoding stage accepts
-`encoder = auto | libx264 | libx265 | nvenc | h264_nvenc | hevc_nvenc`.
-`auto` requires both an NVENC-capable FFmpeg and a visible NVIDIA device
-(`/dev/nvidia*`), then picks `h264_nvenc`; otherwise `libx264`. That matters on
-CI images whose FFmpeg advertises NVENC without a driver. Override with
-`FRAMEFROG_FORCE_NVENC=1` / `FRAMEFROG_DISABLE_NVENC=1`. The same job definition
-therefore runs on a CPU laptop and a GPU box. An explicit NVENC request on a build without it fails with a clear
-message. The chosen encoder is recorded in each stage's manifest metadata
-(`encoder`, or `encoders.master/proxy` in delivery).
-
-**4K upscaling** (`upscale`)
-
-| Backend | Needs | Notes |
-|---|---|---|
-| `tensorrt` | `tensorrt` + `pycuda` + a `.engine` | fastest; contract below |
-| `realesrgan` | `realesrgan` + `basicsr` + `torch` + `.pth` | x4 network, then resample to target |
-| `ffmpeg` | nothing | Lanczos resample; not learned |
-
-`auto` prefers TensorRT when an engine is configured and importable, then
-Real-ESRGAN, then Lanczos. The stage is a no-op (reported `skipped`) when the
-source is already at `target_height` (default 2160); otherwise it writes a
-video at the target height with the original audio muxed once.
-
-TensorRT engines must expose one input and one output with this contract:
-
-- input: `float32`, RGB, NCHW, values in `[0, 1]`
-- output: RGB, NCHW, `float32` in `[0, 1]` or `uint8`
-- dynamic spatial axes are set to `(1, 3, H, W)` per frame; dynamic batch or
-  channel axes are rejected
-
-```bash
-# build once on the target GPU
-trtexec --onnx=RealESRGAN_x4plus.onnx --saveEngine=upscale.engine --fp16 \
-        --shapes=input:1x3x1080x1920
-python main.py --input in.mp4 --stages upscale,deliver \
-  --upscale-backend tensorrt --upscale-engine upscale.engine
-```
-
-Weights are not committed: `python scripts/fetch_models.py --realesrgan` fetches
-the Real-ESRGAN x4 checkpoint (~64 MB); TensorRT engines are built on the GPU
-host.
-
-**Rotoscoping** (`rotoscope`)
-
-SAM 2 tracks an object and writes a matte; the picture itself is passed through
-untouched. Install the runtime and a checkpoint:
-
-```bash
-pip install -r requirements-gpu.txt
-pip install git+https://github.com/facebookresearch/sam2.git
-python scripts/fetch_models.py --sam2 small   # ~150 MB, large ~900 MB
-```
-
-- `auto` (default): SAM 2's automatic mask generator runs on the first frame,
-  the largest object is used as the seed, and the video predictor propagates it.
-- `prompted`: pass `rotoscope_prompt`, e.g.
-  `{"frame": 0, "points": [[960, 540]], "labels": [1]}` or
-  `{"frame": 0, "box": [x0, y0, x1, y1]}`.
-
-Artifacts: `07_matte.mp4` (grayscale), `07_sam2_masks/*.png` (per-frame masks),
-`07_masks.json` (mode, seed, device, frame count, coverage min/mean/max). The
-matte path is also promoted to `manifest.artifacts.matte`. A missing SAM 2
-runtime, checkpoint or config fails the stage loudly — a rotoscope request is
-never silently skipped.
-
-> GPU code paths require NVIDIA hardware and were exercised only through their
-> guard rails and CPU fallbacks in CI; the TensorRT engine contract and SAM 2
-> integration need validation on a GPU host before production use.
-
-### GPU smoke test
-
-One command answers "will the GPU paths actually run on this box?":
-
-```bash
-python -m framefrog.gpu_check --all        # or: make gpu-check
-```
-
-It reports FFmpeg/NVENC availability (compiled vs. a real NVIDIA device), torch
-CUDA, TensorRT/PyCUDA/SAM 2/Real-ESRGAN runtimes, then runs the checks you
-configured:
-
-- **encode** — a 0.5 s synthetic H.264 encode with the auto-selected encoder
-  (NVENC on a GPU host, libx264 otherwise).
-- **tensorrt** (`--engine` or an `assets/models/*.engine` with `--all`) — load
-  the engine, infer one synthetic frame, report input/output shapes and timing.
-- **sam2** (`--sam2-checkpoint` or `--all`) — synthesise an 8-frame moving-square
-  clip, run the full `rotoscope` stage in `auto` mode, verify a non-empty matte.
-- **realesrgan** (`--realesrgan-model` or `--all`) — upscale one synthetic frame.
-
-Exit code is 0 when every *requested* check passes; skipped checks and a
-CPU-only host do not fail the probe. `--json` emits a machine-readable report;
-the same probe runs in CI to keep the command honest.
-
-Full host preparation — driver, CUDA, NVENC-enabled FFmpeg, torch wheels, SAM 2,
-weights, TensorRT engine build, troubleshooting and container notes — is in
-[docs/nvidia-host.md](docs/nvidia-host.md).
-
-All stages share one signature:
-
-```python
-def run(input_path: str, workdir: str, options: dict) -> StageResult: ...
-```
-
-Adding a stage is one file in `framefrog/stages/` plus one line in
-`framefrog/stages/__init__.py`. The orchestrator learns nothing else about it.
-
-### Built-in looks
-
-`assets/luts/*.cube` are generated deterministically by `framefrog/lut.py`:
-
-- `cinematic_warm` — warm highs, gently cooled shadows, filmic S-curve
-- `teal_orange` — split-tone, teal shadows / orange skin
-- `neutral_film` — clean filmic contrast, mild saturation
-
-Point `--lut` at any `.cube` file to use your own. Every job manifest records
-the LUT's name, cube size and SHA-256 so a grade is reproducible.
-
----
-
-## Job layout and manifest
-
-```
-outputs/jobs/fj_ab12cd34/
-  00_input.mp4
-  01_audio_clean.mp4
-  02_scenes.json
-  03_graded.mp4
-  04_interpolated.mp4
-  05_master.mp4
-  05_proxy_720p.mp4
-  05_poster.jpg
-  manifest.json
-```
-
-The manifest is the audit trail: request, source probe, per-stage status and
-timings, artifacts, liveness. If a stage fails, the manifest records the FFmpeg
-tail and everything produced up to that point — partial work is never silently
-discarded.
-
-```json
-{
-  "job_id": "fj_ab12cd34",
-  "status": "completed",
-  "input": { "width": 640, "height": 360, "fps": 30.0, "duration_s": 6.0 },
-  "stages": [ { "stage": "color_grade", "status": "completed", "duration_s": 0.35,
-                "meta": { "lut": "cinematic_warm.cube", "strength": 1.0, "sha256": "…" } },
-              { "stage": "interpolate", "status": "completed",
-                "meta": { "interp_model": "RIFE v4.9 (ONNX Runtime)",
-                          "provider": "CPUExecutionProvider", "output_fps": 60.0 } } ],
-  "artifacts": { "master": "…/05_master.mp4", "proxy": "…", "poster": "…", "scenes": "…" }
-}
-```
-
----
-
-## HTTP API
-
-```bash
-uvicorn framefrog.api:app --port 8080
-```
+## 6. API
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/health` | capabilities + FFmpeg availability |
-| `GET` | `/stages` | stage catalogue |
-| `POST` | `/post_production` | queue a job, returns `202 {job_id}` |
-| `GET` | `/jobs/{id}` | manifest (memory, falls back to disk); adds `download_url` when signing is on |
-| `GET` | `/jobs/{id}/download` | master MP4; requires `?token=&expires=` when signing is on |
+| `GET` | `/health` | Liveness |
+| `GET` | `/ready` | Readiness (binaries, database, storage) |
+| `POST` | `/v1/jobs` | Create a job — returns `202` immediately |
+| `GET` | `/v1/jobs/{job_id}` | Job state, stage results, outputs |
+| `POST` | `/v1/jobs/{job_id}/cancel` | Request cancellation |
+| `GET` | `/v1/jobs/{job_id}/outputs` | Produced artifacts |
 
 ```bash
-curl -X POST localhost:8080/post_production \
-  -H 'content-type: application/json' \
-  -d '{"input_uri": "rushes/spot-01.mov",
-       "options": {"lut": "teal_orange", "look_strength": 0.7, "target_fps": 60}}'
+curl -X POST http://localhost:8080/v1/jobs \
+  -H 'Content-Type: application/json' \
+  -H "X-API-Key: $API_KEY" \
+  -d '{
+    "input_uri": "s3://my-bucket/inputs/rushes.mp4",
+    "stages": ["scene_detect", "audio_cleanup", "interpolate", "color_grade", "deliver"],
+    "options": {
+      "scene_detect": {"threshold": 27.0, "minimum_scene_length_seconds": 0.5},
+      "audio_cleanup": {"enabled": true, "target_lufs": -16.0},
+      "interpolate": {"enabled": true, "target_fps": 60, "device": "auto"},
+      "color_grade": {"enabled": false, "lut_uri": null, "intensity": 1.0},
+      "deliver": {"container": "mp4", "video_codec": "h264", "audio_codec": "aac", "crf": 20, "preset": "medium"}
+    },
+    "idempotency_key": "rushes-2026-11-19-a"
+  }'
 ```
 
-S3 inputs work when `boto3` (or the AWS CLI) is configured:
-`"input_uri": "s3://bucket/rushes/spot-01.mov"`.
+Job lifecycle: `queued → acquiring_input → validating → processing → uploading
+→ completed | failed | cancelled`. Transitions are validated; an illegal
+transition raises rather than silently overwriting state.
 
----
+Local inputs are restricted to `WORK_DIR` (plus `ALLOWED_INPUT_ROOTS`); the
+CLI additionally allows the current directory because it runs on the
+operator's machine.
 
-## Operations
-
-Three opt-in pieces, all stdlib-only, all recorded in the manifest:
-
-**Signed download links.** Set `FRAMEFROG_SIGNING_SECRET` and the API only serves
-the master with a valid HMAC token. `GET /jobs/{id}` then carries a ready-to-use
-`download_url`; `FRAMEFROG_SIGNING_TTL` controls link lifetime (default 1 hour).
-Without the secret (local dev) downloads stay open — the `/health` probe reports
-which mode is active under `ops.signing`.
-
-**Job webhooks.** Pass `options.webhook_url` (or `--webhook-url`) and the final
-manifest is POSTed when the job finishes — success or failure. With
-`FRAMEFROG_WEBHOOK_SECRET` set, the body is signed:
-
-```
-X-FrameFrog-Signature: sha256=<hex HMAC of the raw body>
-```
-
-Delivery is best-effort with 3 attempts and backoff; the outcome lands in
-`manifest.webhook` (`delivered`, `attempts`, `status`, `error`). The hook URL is
-redacted before recording so tokens never leak into the audit trail.
-
-**Cost accounting.** Every manifest gets `cost`: measured `gpu_seconds` /
-`cpu_seconds`, per-stage class and cost. A stage is billed as GPU only if it
-actually used a GPU backend (DeepFilterNet or RIFE); everything else is CPU.
-Rates default to **0.0** — the manifest reports seconds but never invents a
-price. Set `FRAMEFROG_GPU_HOURLY_USD` / `FRAMEFROG_CPU_HOURLY_USD` (or
-`--gpu-rate` / `--cpu-rate`) to turn seconds into dollars using your provider's
-rate card.
-
-```json
-"cost": {
-  "rates": {"gpu_hourly_usd": 3.0, "cpu_hourly_usd": 0.3},
-  "gpu_seconds": 72.0, "cpu_seconds": 18.0,
-  "stages": [{"stage": "interpolate", "class": "gpu", "seconds": 36.0, "usd": 0.03}],
-  "total_usd": 0.0615
-}
-```
-
----
-
-## Deploy
+## 7. Tests
 
 ```bash
-pip install cerebrium
-cerebrium deploy          # reads cerebrium.toml
+pytest -m "not gpu" -v         # the CPU suite (no GPU needed)
+pytest -m gpu -v               # GPU-marked tests, skipped without CUDA
+python scripts/generate_test_video.py   # synthetic media
 ```
 
-`cerebrium.toml` ships both shapes: a FastAPI service (`framefrog.api:app`) and a
-function worker (`main:post_production`). The `Dockerfile` is the same image used
-locally; FFmpeg is the only system package.
+Test media is generated locally with FFmpeg's own test sources — nothing is
+downloaded. The suite covers configuration, authentication, URI validation,
+SSRF protection, path safety, state transitions, idempotency, rational frame
+rates, FFprobe parsing, FFmpeg command construction, scene serialisation, LUT
+validation, storage keys, the DeepFilterNet and RIFE capability boundaries,
+error responses and redaction — plus integration coverage of health,
+readiness, the job API, scene detection, LUT application, final MP4 delivery
+and local storage.
 
-The image bundles the RIFE backend by default (`onnxruntime` + the 21 MB graph at
-build time). Build lean and use the FFmpeg interpolation fallback with:
+A skipped test is not a passed test: the GPU tests are skipped on this
+machine and the repository records that fact.
+
+## 8. Docker
 
 ```bash
-docker build --build-arg WITH_RIFE=0 -t framefrog .
+docker build -t framefrog-pipeline:cpu .
+docker run --rm -p 8080:8080 -e APP_ENV=development framefrog-pipeline:cpu
+
+# GPU image (never built from this repository — no CUDA host available)
+docker build -f Dockerfile.gpu -t framefrog-pipeline:gpu .
 ```
 
-In production, the in-process `BackgroundTasks` is replaced by a queue consumer
-(SQS / Cerebrium async), so workers scale independently of the API and each
-stage can fan out per shot.
+The CPU image runs as a non-root user, contains no secrets and no model
+weights, and has a health check. It defaults to `APP_ENV=production`, where
+an `API_KEY` is mandatory.
 
----
+## 9. Storage
 
-## Tests
+- **local** — everything under `WORK_DIR` (`jobs/<job_id>/work/…`).
+- **s3** — any S3-compatible service via boto3, with `inputs`, `intermediate`
+  and `outputs` prefixes, presigned upload/download URLs and a custom
+  `S3_ENDPOINT_URL` for Cloudflare R2 or MinIO.
+
+Object keys are sanitised so a job id or file name can never escape a prefix.
+Credentials are read from the environment and never logged; presigned URLs are
+recorded redacted.
+
+## 10. DeepFilterNet (audio cleanup)
+
+The adapter extracts mono 48 kHz PCM, runs DeepFilterNet3, loudness
+normalises to −16 LUFS and remuxes against the untouched picture. When the
+package is not installed, the FFmpeg spectral path runs instead and the
+manifest records `denoise_model: "ffmpeg"` with the fallback reason — the
+original audio is never returned as "cleaned". Requesting
+`denoise_model: "deepfilternet"` without the package is an error, not a
+silent fallback.
 
 ```bash
-python -m pytest -q
+pip install -e ".[audio]"
 ```
 
-Coverage: LUT generation and fingerprints (no FFmpeg), scene detection on a
-synthetic hard cut (OpenCV only), model resolution and fallback semantics,
-signed-link HMACs, webhook delivery/redaction, cost accounting, file-queue
-claim/ack/nack semantics, per-shot split/queue/stitch on a real FFmpeg clip,
-encoder selection, the 4K Lanczos path and GPU-backend guards, and API smoke
-tests. The RIFE integration test runs only when
-both the graph and `onnxruntime` are present; FFmpeg-dependent tests skip
-automatically when the binary is missing.
+## 11. RIFE (frame interpolation)
 
-CI (`.github/workflows/ci.yml`) runs the suite on Ubuntu with FFmpeg on every
-push to `main` and every pull request. Model weights are not fetched in CI, so
-the RIFE test skips there by design while the FFmpeg paths run for real.
+The RIFE v4.9 ONNX graph drives real optical-flow interpolation. It is
+scene-aware: frames are never blended across a hard cut. Output is capped at
+60 fps and 1920×1080 for the neural path. An explicit `device: "cuda"`
+request fails with a capability error when no CUDA device is present — a GPU
+job never silently runs on the CPU.
 
----
+```bash
+python scripts/download_models.py
+python -m pytest tests/integration/test_rife_cpu.py -v
+```
 
-## Why it is built this way
+## 12. Cerebrium
 
-- **Stateless stages, one contract.** Each stage can run as its own GPU function,
-  be retried in isolation, or be swapped for a model-backed version without
-  touching the rest.
-- **FFmpeg is the substrate, not a hidden detail.** Filter graphs live in the
-  stage files where a colourist or engineer can read them.
-- **Honest "AI".** Look selection, denoise model choice and interpolation quality
-  are inputs to a deterministic execution layer. DeepFilterNet and RIFE plug into
-  the same stage contract as the FFmpeg fallbacks; the manifest, artifacts and
-  API are identical either way, and every fallback is recorded.
-- **Reproducibility.** LUT hashes, model graph names, ONNX providers and stage
-  timings are recorded per job.
+`cerebrium.toml` configures the serverless GPU deployment (FastAPI entry
+point, system packages, environment, GPU type, scale-to-zero, model cache).
+It has **not** been deployed from this repository; see
+[docs/CEREBRIUM_DEPLOYMENT.md](./docs/CEREBRIUM_DEPLOYMENT.md).
 
-## Roadmap
+## 13. Limits
 
-- [x] Real, runnable stages with FFmpeg
-- [x] Deterministic LUT library + fingerprints
-- [x] Manifest, API, tests, Docker
-- [x] DeepFilterNet3 behind `audio_cleanup`
-- [x] RIFE v4.9 (ONNX Runtime) behind `interpolate`
-- [x] Per-shot fan-out via queue
-- [x] Signed upload/download URLs + job webhooks
-- [x] Model-aware cost accounting (GPU-seconds per stage)
-- [x] SAM 2 rotoscoping (auto + prompted seeds)
-- [x] 4K upscaling (TensorRT / Real-ESRGAN / Lanczos)
-- [x] NVENC video encoding with automatic fallback
+| Limit | Value |
+|---|---|
+| Input size | `MAX_UPLOAD_BYTES` (2 GiB default) |
+| Input duration | `MAX_VIDEO_DURATION_SECONDS` (1 h default) |
+| Input resolution | `MAX_VIDEO_WIDTH` × `MAX_VIDEO_HEIGHT` (3840×2160 default) |
+| Frame rate | `MAX_OUTPUT_FPS` (60) |
+| Interpolation target | 60 fps (120 fps is not implemented) |
+| RIFE input resolution | 1920×1080 |
+| Parallel jobs | `MAX_CONCURRENT_JOBS` (2) |
+| Colour grade intensity | 1.0 only (partial blending is not implemented) |
 
----
+## 14. Security
 
-## License
+API key authentication outside development mode, SSRF protection (loopback,
+private, link-local and cloud-metadata destinations are refused), local path
+containment under `WORK_DIR`, traversal rejection, media limits, no
+`shell=True` anywhere, per-job temporary directories, bounded concurrency,
+command timeouts and redacted signed URLs. The full model is in
+[SECURITY.md](./SECURITY.md).
 
-FrameFrog is licensed under the **GNU Affero General Public License v3.0**
-(AGPL-3.0). See [LICENSE](LICENSE) for the full text.
+## 15. Known limitations
 
-AGPL-3.0 is a strong copyleft license: if you modify FrameFrog and make it
-available to users over a network, you must offer those users the Corresponding
-Source (section 13). Running it locally or internally without offering it as a
-network service does not trigger that obligation.
+- No GPU execution has been validated; every GPU claim is `pending`.
+- The job runner is in-process (threads); there is no distributed queue.
+- SQLite is single-node; the repository interface allows PostgreSQL later.
+- One shared API key; no accounts, quotas or rate limiting.
+- DeepFilterNet has not been executed in this environment.
+- The colour-grade stage applies a supplied `.cube`; it does not derive a
+  look from a reference image.
+- 4K, 120 fps, multi-GPU, Kubernetes, dashboard, billing and multi-region are
+  out of scope for this phase.
 
-Every Python file carries SPDX headers; `python scripts/check_spdx.py` (also a
-CI step and `make spdx-check`) verifies the LICENSE text, the headers and their
-position relative to shebangs.
+## 16. Roadmap
 
-© FrameFrog — [framefrog.me](https://framefrog.me) · contact@framefrog.me
+1. Validate CUDA execution, RIFE performance, VRAM and cost per video minute
+   once startup cloud credits are available ([plan](./docs/GPU_VALIDATION.md)).
+2. Deploy to Cerebrium and validate the serverless GPU lifecycle.
+3. Replace the in-process runner with a queue consumer (SQS).
+4. PostgreSQL job store for multi-node deployments.
+5. Per-tenant keys, quotas and rate limiting.
+6. Partial LUT intensity blending, once implemented and tested.
+
+## 17. Licence
+
+AGPL-3.0-or-later — see [LICENSE](./LICENSE). Third-party components keep
+their own licences; nothing upstream is vendored into this repository.
