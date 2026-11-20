@@ -30,6 +30,7 @@ class FakeSigningStorage:
 
     def __init__(self) -> None:
         self.presigned: list[tuple[str, int]] = []
+        self.presigned_get: list[tuple[str, int]] = []
 
     @property
     def input_prefix(self) -> str:

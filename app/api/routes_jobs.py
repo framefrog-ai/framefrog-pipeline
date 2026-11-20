@@ -223,8 +223,30 @@ def download_artifact(
 
 
 def _with_download_url(entry: OutputModel, request: Request, settings: Settings, job_id: str) -> OutputModel:
-    """Add a download link to an output entry when one can be issued."""
+    """Add a download link to an output entry when one can be issued.
+
+    Object storage gets a presigned URL; the local backend gets an HMAC
+    signed link to the download route. Without a key and without object
+    storage no link is issued at all.
+    """
     data = entry.model_dump()
+    key = data.get("key") or data.get("uri")
+    storage = getattr(request.app.state, "storage", None)
+    presign = getattr(storage, "presign_get", None) if storage is not None else None
+    if presign is not None and key:
+        try:
+            url = presign(str(key), settings.presigned_url_expiry_seconds)
+        except Exception as exc:  # never fail a status response over a link
+            log.warning(
+                "presign_failed",
+                extra={"extra_fields": {"error": f"{type(exc).__name__}: {exc}"}},
+            )
+        else:
+            if url:
+                data["download_url"] = url
+                data["expires_in"] = settings.presigned_url_expiry_seconds
+                return OutputModel(**data)
+
     secret = _signing_secret(settings)
     if secret and data.get("path"):
         url = ops.download_url(
