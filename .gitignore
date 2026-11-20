@@ -15,6 +15,10 @@ work/
 *.db-wal
 *.db-shm
 
+# generated looks (the runtime writes them to the model cache, never here)
+app/assets/
+app/media/assets/
+
 # generated media and model weights
 outputs/
 assets/sample/

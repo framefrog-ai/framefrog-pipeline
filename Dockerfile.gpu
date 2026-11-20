@@ -37,6 +37,7 @@ WORKDIR /app
 
 COPY pyproject.toml README.md LICENSE ./
 COPY app ./app
+COPY assets/luts ./assets/luts
 COPY scripts ./scripts
 COPY main.py demo.py ./
 

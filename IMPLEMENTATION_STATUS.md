@@ -30,6 +30,7 @@ produced by a command in this repository.
 | Versioned API (`/v1/jobs`, `/v1/jobs/{id}`, `/v1/jobs/{id}/cancel`, `/v1/jobs/{id}/outputs`) | IMPLEMENTED_AND_CPU_TESTED | `tests/integration/test_api.py` | CPU | none | No pagination/filtering yet | `pytest tests/integration/test_api.py -v` |
 | Liveness / readiness (`/health`, `/ready`) | IMPLEMENTED_AND_CPU_TESTED | `tests/integration/test_api.py` | CPU | none | `/ready` does not probe the model runtimes | `curl localhost:8080/ready` |
 | Request/response schemas with validation | IMPLEMENTED_AND_CPU_TESTED | `tests/unit/test_schemas.py` | CPU | none | Partial LUT intensity is rejected rather than implemented | `pytest tests/unit/test_schemas.py -v` |
+| Per-stage `enabled` switches and delivery settings | IMPLEMENTED_AND_CPU_TESTED | `tests/integration/test_options_contract.py` | CPU | none | Only `audio_cleanup`, `interpolate` and `color_grade` have a switch | `pytest tests/integration/test_options_contract.py -v` |
 | Structured error taxonomy (`app/core/errors.py`) | IMPLEMENTED_AND_CPU_TESTED | `tests/unit/test_errors.py` | CPU | none | — | `pytest tests/unit/test_errors.py -v` |
 | Structured JSON logging | IMPLEMENTED_AND_CPU_TESTED | `tests/unit/test_logging.py` | CPU | none | Log shipping is left to the platform | `pytest tests/unit/test_logging.py -v` |
 | API authentication (API key, constant-time compare) | IMPLEMENTED_AND_CPU_TESTED | `tests/unit/test_security.py`, `tests/integration/test_api.py` | CPU | none | A single shared key; no per-user identity | `pytest -k "api_key or auth" -v` |

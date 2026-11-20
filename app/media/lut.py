@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import tempfile
 
 LUT_SIZE = 17
 
@@ -26,10 +27,33 @@ BUILTIN_LOOKS: dict[str, str] = {
 }
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
+_APP_ROOT = os.path.dirname(_HERE)
+_REPO_ROOT = os.path.dirname(_APP_ROOT)
+
+#: Where a *committed* look lives (checked first, never written to).
 _DEFAULT_DIRS = [
-    os.path.join(_HERE, "..", "assets", "luts"),
+    os.path.join(_REPO_ROOT, "assets", "luts"),
     os.path.join(_HERE, "assets", "luts"),
 ]
+
+
+def _runtime_dirs() -> list[str]:
+    """Writable directories for looks that have to be generated.
+
+    Generated looks never land in the source tree: they go to the model
+    cache, the work directory or the system temp directory.
+    """
+    import tempfile
+
+    dirs: list[str] = []
+    model_cache = os.environ.get("MODEL_CACHE_DIR")
+    if model_cache:
+        dirs.append(os.path.join(model_cache, "luts"))
+    work_dir = os.environ.get("WORK_DIR")
+    if work_dir:
+        dirs.append(os.path.join(work_dir, "luts"))
+    dirs.append(os.path.join(tempfile.gettempdir(), "framefrog-luts"))
+    return dirs
 
 
 def _clamp(x: float) -> float:
@@ -83,7 +107,17 @@ _CACHE: dict[str, str] = {}
 
 
 def _candidate_dirs() -> list[str]:
+    """Every directory a look may be read from, most specific first."""
     dirs = list(_DEFAULT_DIRS)
+    env = os.environ.get("FRAMEFROG_LUT_DIR")
+    if env:
+        dirs.insert(0, env)
+    return dirs
+
+
+def _writable_dirs() -> list[str]:
+    """Directories a generated look may be written to."""
+    dirs = _runtime_dirs()
     env = os.environ.get("FRAMEFROG_LUT_DIR")
     if env:
         dirs.insert(0, env)
@@ -117,8 +151,8 @@ def ensure_lut(name_or_path: str) -> str:
             return path
 
     target_dir = next(
-        (d for d in _candidate_dirs() if _writable_dir(d)),
-        os.path.join(os.getcwd(), "luts"),
+        (d for d in _writable_dirs() if _writable_dir(d)),
+        os.path.join(tempfile.gettempdir(), "framefrog-luts"),
     )
     os.makedirs(target_dir, exist_ok=True)
     path = os.path.join(target_dir, f"{name}.cube")

@@ -183,6 +183,11 @@ Job lifecycle: `queued → acquiring_input → validating → processing → upl
 → completed | failed | cancelled`. Transitions are validated; an illegal
 transition raises rather than silently overwriting state.
 
+A stage option with an explicit `"enabled": false` (`audio_cleanup`,
+`interpolate`, `color_grade`) removes that stage from the run; the manifest
+records it with status `skipped` instead of running it. Only an explicit flag
+disables a stage — the defaults never do.
+
 Local inputs are restricted to `WORK_DIR` (plus `ALLOWED_INPUT_ROOTS`); the
 CLI additionally allows the current directory because it runs on the
 operator's machine.
@@ -231,6 +236,10 @@ an `API_KEY` is mandatory.
 Object keys are sanitised so a job id or file name can never escape a prefix.
 Credentials are read from the environment and never logged; presigned URLs are
 recorded redacted.
+
+Colour looks live in `assets/luts/` (committed). A look that has to be
+generated at runtime is written to the model cache (`MODEL_CACHE_DIR/luts`),
+the work directory or the system temp directory — never into the source tree.
 
 ## 10. DeepFilterNet (audio cleanup)
 

@@ -237,6 +237,24 @@ class ReadyResponse(BaseModel):
     checks: dict[str, Any] = Field(default_factory=dict)
 
 
+def disabled_stages(options: JobOptions) -> list[str]:
+    """Stages the caller explicitly switched off.
+
+    Only an *explicit* ``enabled: false`` disables a stage — the default
+    value of a stage option never silently removes a requested stage.
+    """
+    disabled: list[str] = []
+    candidates = (
+        ("audio_cleanup", options.audio_cleanup),
+        ("interpolate", options.interpolate),
+        ("color_grade", options.color_grade),
+    )
+    for name, model in candidates:
+        if "enabled" in model.model_fields_set and not model.enabled:
+            disabled.append(name)
+    return disabled
+
+
 def to_stage_options(options: JobOptions) -> dict[str, Any]:
     """Translate the API options into the flat option dict the stages use."""
     flat: dict[str, Any] = {
@@ -254,6 +272,10 @@ def to_stage_options(options: JobOptions) -> dict[str, Any]:
     }
     if options.color_grade.enabled:
         flat["lut"] = options.color_grade.lut_uri or "cinematic_warm"
+    disabled = disabled_stages(options)
+    if disabled:
+        # Private key: stripped from the manifest by the pipeline.
+        flat["_disabled_stages"] = disabled
     return flat
 
 

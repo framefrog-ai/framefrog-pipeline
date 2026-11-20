@@ -44,6 +44,7 @@ from app.stages.base import (
     STATUS_COMPLETED,
     STATUS_FAILED,
     STATUS_PENDING_GPU_VALIDATION,
+    STATUS_SKIPPED,
 )
 
 log = get_logger("pipeline")
@@ -80,10 +81,16 @@ def _public_options(options: dict[str, Any]) -> dict[str, Any]:
 
 
 def _job_paths(settings: Settings, job_id: str, output_dir: str | None = None) -> tuple[Path, Path]:
-    root = Path(output_dir) if output_dir else (settings.work_dir_resolved / "jobs" / job_id)
-    workdir = root / "work"
+    """The job directory and its work directory.
+
+    The job id is always part of the path: two jobs never share a directory,
+    even when they write to the same output root.
+    """
+    root = Path(output_dir) if output_dir else (settings.work_dir_resolved / "jobs")
+    job_root = root / job_id
+    workdir = job_root / "work"
     workdir.mkdir(parents=True, exist_ok=True)
-    return root, workdir
+    return job_root, workdir
 
 
 def run_job(
@@ -160,8 +167,21 @@ def run_job(
         # ---------------------------------------------------------- process --
         emit("processing")
         scenes: list[dict[str, Any]] = []
+        disabled_stages = set(request.options.get("_disabled_stages") or [])
         total = len(request.stages)
         for index, name in enumerate(request.stages):
+            if name in disabled_stages:
+                # The caller switched this stage off explicitly.
+                manifest["stages"].append(
+                    {
+                        "stage": name,
+                        "status": STATUS_SKIPPED,
+                        "duration_s": 0.0,
+                        "meta": {"reason": "disabled by the request options"},
+                    }
+                )
+                emit("progress", {"progress_percent": int((index + 1) / max(1, total) * 90)})
+                continue
             if cancel_check is not None and cancel_check():
                 manifest["status"] = "cancelled"
                 manifest["stages"].append(
