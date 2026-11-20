@@ -251,9 +251,7 @@ def run_job(
         # ---------------------------------------------------------- upload --
         emit("uploading")
         if settings.storage_backend == "s3":
-            manifest["outputs"] = _publish_outputs(
-                manifest["outputs"], storage, settings, job_id
-            )
+            manifest["outputs"] = _publish_outputs(manifest["outputs"], storage, settings, job_id)
         manifest["status"] = "completed"
         manifest["final_output"] = current
     except JobCancelledSignal as cancelled:

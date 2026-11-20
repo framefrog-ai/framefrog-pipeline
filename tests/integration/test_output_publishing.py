@@ -11,9 +11,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
-
-import pytest
 
 from app.core.config import Settings
 from app.jobs.models import JobRequest
