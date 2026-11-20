@@ -5,7 +5,7 @@
 > interpolation and MP4 delivery, orchestrated behind one FastAPI service and
 > a persistent job queue.
 
-[![CI](https://img.shields.io/github/actions/workflow/status/framefrog-ai/framefrog-pipeline/ci.yml?branch=main&label=CI&logo=github&logoColor=10B981&labelColor=0D1117&color=10B981)](https://github.com/framefrog-ai/framefrog-pipeline/actions/workflows/ci.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/framefrog-ai/framefrog-pipeline/ci.yml?branch=feat/gpu-ready-pre-mvp&label=CI&logo=github&logoColor=10B981&labelColor=0D1117&color=10B981)](https://github.com/framefrog-ai/framefrog-pipeline/actions/workflows/ci.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-10B981?style=for-the-badge&labelColor=0D1117)](./LICENSE)
 
 - **Product site:** <https://framefrog.me>
